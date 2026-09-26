@@ -1,7 +1,7 @@
 // ============================================================
 // FINANZE
 // MOTORE CENTRALE - RICALCOLO FINANZE
-// VERSIONE: 0.5 PRO
+// VERSIONE: 0.6 PRO
 // ============================================================
 //
 // LIBRERIA:
@@ -68,7 +68,7 @@ function ricalcolaFinanze(
     ) {
 
         message(
-            "ERRORE v0.4: Saldo, Transazioni o Conti non accessibile."
+            "ERRORE v0.6: Saldo, Transazioni o Conti non accessibile."
         );
 
         return;
@@ -598,9 +598,9 @@ function ricalcolaFinanze(
                                 true;
 
 
-                            transazioneR.set(
+                            transazioneR.link(
                                 "Check Saldo Origine",
-                                [checkCorrente]
+                                checkCorrente
                             );
                         }
                     }
@@ -845,14 +845,14 @@ function ricalcolaFinanze(
                         "Calcolata"
                     );
 
-                    riconciliazione.set(
+                    riconciliazione.link(
                         "Conto",
-                        [collegamentoConto]
+                        collegamentoConto
                     );
 
-                    riconciliazione.set(
+                    riconciliazione.link(
                         "Check Saldo Origine",
-                        [checkCorrente]
+                        checkCorrente
                     );
                 }
 
@@ -944,9 +944,9 @@ function ricalcolaFinanze(
                         0
                     );
 
-                    riconciliazione.set(
+                    riconciliazione.link(
                         "Check Saldo Origine",
-                        [checkCorrente]
+                        checkCorrente
                     );
                 }
 
@@ -978,9 +978,9 @@ function ricalcolaFinanze(
                         0
                     );
 
-                    riconciliazione.set(
+                    riconciliazione.link(
                         "Check Saldo Origine",
-                        [checkCorrente]
+                        checkCorrente
                     );
                 }
 
