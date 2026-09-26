@@ -23,28 +23,23 @@
 //
 // ============================================================
 
-
-function ricalcolaFinanze() {
+function ricalcolaFinanze(
+    libreriaSaldo,
+    libreriaTransazioni,
+    libreriaConti
+) {
 
 
     // ========================================================
     // 1. LIBRERIE
     // ========================================================
-
-    var libreriaSaldo =
-        libByName(
-            "[■] Saldo"
-        );
-
-    var libreriaTransazioni =
-        libByName(
-            "[■] Transazioni"
-        );
-
-    var libreriaConti =
-        libByName(
-            "[■] Conti"
-        );
+    //
+    // Le 3 librerie principali vengono ricevute
+    // direttamente dallo script chiamante.
+    //
+    // Questo evita il problema di libByName()
+    // eseguito all'interno del file JavaScript esterno.
+    // ========================================================
 
     var libreriaDashboard =
         libByName(
