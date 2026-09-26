@@ -881,13 +881,7 @@ function ricalcolaFinanze(
                                 "Altre Spese",
 
                             "Origine":
-                                "Calcolata",
-
-                            "Conto":
-                                [collegamentoConto],
-
-                            "Check Saldo Origine":
-                                [checkCorrente]
+                                "Calcolata"
 
                         });
 
@@ -895,6 +889,20 @@ function ricalcolaFinanze(
                     if (
                         nuovaRiconciliazione
                     ) {
+
+                        // Le relazioni vengono collegate DOPO create().
+                        // Su Memento Desktop il passaggio delle relazioni
+                        // direttamente dentro create() non è affidabile.
+                        nuovaRiconciliazione.link(
+                            "Conto",
+                            collegamentoConto
+                        );
+
+                        nuovaRiconciliazione.link(
+                            "Check Saldo Origine",
+                            checkCorrente
+                        );
+
 
                         riconciliazioniCreate.push(
                             nuovaRiconciliazione
@@ -2146,16 +2154,3 @@ function ricalcolaFinanze(
 
 
 } // fine ricalcolaFinanze()
-// ============================================================
-// TEST - RICEZIONE LIBRERIE DAL CHIAMANTE
-// ============================================================
-
-function testRicezioneLibrerie(saldo, transazioni, conti) {
-
-    message(
-        "DENTRO MOTORE ESTERNO\n" +
-        "Saldo: " + Boolean(saldo) +
-        "\nTransazioni: " + Boolean(transazioni) +
-        "\nConti: " + Boolean(conti)
-    );
-}
