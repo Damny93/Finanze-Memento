@@ -2151,3 +2151,16 @@ function ricalcolaFinanze() {
 
 
 } // fine ricalcolaFinanze()
+// ============================================================
+// TEST - RICEZIONE LIBRERIE DAL CHIAMANTE
+// ============================================================
+
+function testRicezioneLibrerie(saldo, transazioni, conti) {
+
+    message(
+        "DENTRO MOTORE ESTERNO\n" +
+        "Saldo: " + Boolean(saldo) +
+        "\nTransazioni: " + Boolean(transazioni) +
+        "\nConti: " + Boolean(conti)
+    );
+}
