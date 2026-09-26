@@ -1,7 +1,7 @@
 // ============================================================
 // FINANZE
 // MOTORE CENTRALE - RICALCOLO FINANZE
-// VERSIONE: 0.6 PRO
+// VERSIONE: 0.6.1 PRO
 // ============================================================
 //
 // LIBRERIA:
@@ -273,7 +273,7 @@ function ricalcolaFinanze(
         ) {
 
             return (
-                "[ ⛃ - " +
+                "[ \u26C3 - " +
                 testo +
                 " ]"
             );
@@ -281,7 +281,7 @@ function ricalcolaFinanze(
 
 
         return (
-            "[ ⛃ " +
+            "[ \u26C3 " +
             testo +
             " ]"
         );
@@ -1442,7 +1442,7 @@ function ricalcolaFinanze(
         ) {
 
             return (
-                "⛃ " +
+                "\u26C3 " +
                 formattaEuroDashboard(
                     valore
                 )
