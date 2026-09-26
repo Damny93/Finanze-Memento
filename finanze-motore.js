@@ -1,7 +1,7 @@
 // ============================================================
 // FINANZE
 // MOTORE CENTRALE - RICALCOLO FINANZE
-// VERSIONE: 0.6.2 PRO
+// VERSIONE: 0.6.3 PRO
 // ============================================================
 //
 // LIBRERIA:
@@ -26,7 +26,10 @@
 function ricalcolaFinanze(
     libreriaSaldo,
     libreriaTransazioni,
-    libreriaConti
+    libreriaConti,
+    libreriaDashboard,
+    libreriaSpeseFisseDashboard,
+    libreriaSalvadanaioDashboard
 ) {
 
 
@@ -34,41 +37,29 @@ function ricalcolaFinanze(
     // 1. LIBRERIE
     // ========================================================
     //
-    // Le 3 librerie principali vengono ricevute
-    // direttamente dallo script chiamante.
+    // Tutte le librerie usate dal motore vengono ricevute
+    // direttamente dallo script chiamante Memento.
     //
-    // Questo evita il problema di libByName()
-    // eseguito all'interno del file JavaScript esterno.
+    // Il file JavaScript esterno NON risolve librerie da solo.
+    // Questo evita problemi di contesto su Memento Desktop.
     // ========================================================
-
-    var libreriaDashboard =
-        libByName(
-            "[■] Dashboard Finanze"
-        );
-
-    var libreriaSpeseFisseDashboard =
-        libByName(
-            "[■] Spese Fisse"
-        );
-
-    var libreriaSalvadanaioDashboard =
-        libByName(
-            "[■] Salvadanaio"
-        );
 
 
     // ========================================================
-    // 2. CONTROLLO LIBRERIE PRINCIPALI
+    // 2. CONTROLLO LIBRERIE
     // ========================================================
 
     if (
         !libreriaSaldo ||
         !libreriaTransazioni ||
-        !libreriaConti
+        !libreriaConti ||
+        !libreriaDashboard ||
+        !libreriaSpeseFisseDashboard ||
+        !libreriaSalvadanaioDashboard
     ) {
 
         message(
-            "ERRORE v0.6.2: Saldo, Transazioni o Conti non accessibile."
+            "ERRORE v0.6.3: una o più librerie FINANZE non sono accessibili."
         );
 
         return;
