@@ -1,7 +1,7 @@
 // ============================================================
 // FINANZE
 // MOTORE CENTRALE - RICALCOLO FINANZE
-// VERSIONE: 0.6.1 PRO
+// VERSIONE: 0.6.2 PRO
 // ============================================================
 //
 // LIBRERIA:
@@ -68,7 +68,7 @@ function ricalcolaFinanze(
     ) {
 
         message(
-            "ERRORE v0.6: Saldo, Transazioni o Conti non accessibile."
+            "ERRORE v0.6.2: Saldo, Transazioni o Conti non accessibile."
         );
 
         return;
@@ -845,15 +845,36 @@ function ricalcolaFinanze(
                         "Calcolata"
                     );
 
-                    riconciliazione.link(
-                        "Conto",
-                        collegamentoConto
-                    );
+                    if (
+                        !contieneConto(
+                            riconciliazione.field(
+                                "Conto"
+                            ),
+                            idConto
+                        )
+                    ) {
 
-                    riconciliazione.link(
-                        "Check Saldo Origine",
-                        checkCorrente
-                    );
+                        riconciliazione.link(
+                            "Conto",
+                            collegamentoConto
+                        );
+                    }
+
+
+                    if (
+                        !contieneConto(
+                            riconciliazione.field(
+                                "Check Saldo Origine"
+                            ),
+                            checkCorrente.id
+                        )
+                    ) {
+
+                        riconciliazione.link(
+                            "Check Saldo Origine",
+                            checkCorrente
+                        );
+                    }
                 }
 
 
@@ -944,10 +965,20 @@ function ricalcolaFinanze(
                         0
                     );
 
-                    riconciliazione.link(
-                        "Check Saldo Origine",
-                        checkCorrente
-                    );
+                    if (
+                        !contieneConto(
+                            riconciliazione.field(
+                                "Check Saldo Origine"
+                            ),
+                            checkCorrente.id
+                        )
+                    ) {
+
+                        riconciliazione.link(
+                            "Check Saldo Origine",
+                            checkCorrente
+                        );
+                    }
                 }
 
 
@@ -978,10 +1009,20 @@ function ricalcolaFinanze(
                         0
                     );
 
-                    riconciliazione.link(
-                        "Check Saldo Origine",
-                        checkCorrente
-                    );
+                    if (
+                        !contieneConto(
+                            riconciliazione.field(
+                                "Check Saldo Origine"
+                            ),
+                            checkCorrente.id
+                        )
+                    ) {
+
+                        riconciliazione.link(
+                            "Check Saldo Origine",
+                            checkCorrente
+                        );
+                    }
                 }
 
 
