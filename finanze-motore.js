@@ -1,7 +1,7 @@
 // ============================================================
 // FINANZE
 // MOTORE CENTRALE - RICALCOLO FINANZE
-// VERSIONE: 0.7.1 PRO
+// VERSIONE: 0.7.2 PRO
 // ============================================================
 //
 // LIBRERIA:
@@ -21,7 +21,7 @@
 // Creazione / Modifica / Eliminazione decidono quando
 // richiamare ricalcolaFinanze().
 //
-// LOGICA 0.7.1:
+// LOGICA 0.7.2:
 // - Primo Check = baseline automatica.
 // - Check successivi = VERIFICA ENTRATE.
 // - Nessuna "Altra Spesa" viene creata finché
@@ -32,6 +32,12 @@
 //   a quel Check in modo idempotente.
 //
 // ============================================================
+
+function versioneMotoreFinanze() {
+
+    return "0.7.2 PRO";
+}
+
 
 function ricalcolaFinanze(
     libreriaSaldo,
@@ -69,7 +75,7 @@ function ricalcolaFinanze(
     ) {
 
         message(
-            "ERRORE v0.7.1: una o più librerie FINANZE non sono accessibili."
+            "ERRORE v0.7.2: una o più librerie FINANZE non sono accessibili."
         );
 
         return;
@@ -392,7 +398,7 @@ function ricalcolaFinanze(
 
         var collegamenti =
             movimento.field(
-                "Check Saldo Origine"
+                "Check Riconciliazione"
             );
 
 
@@ -424,7 +430,7 @@ function ricalcolaFinanze(
             ) {
 
                 movimento.unlink(
-                    "Check Saldo Origine",
+                    "Check Riconciliazione",
                     collegamenti[rc]
                 );
             }
@@ -432,7 +438,7 @@ function ricalcolaFinanze(
 
 
         movimento.link(
-            "Check Saldo Origine",
+            "Check Riconciliazione",
             checkCorretto
         );
     }
@@ -787,7 +793,7 @@ function ricalcolaFinanze(
 
                 var checkOrigineR =
                     transazioneR.field(
-                        "Check Saldo Origine"
+                        "Check Riconciliazione"
                     );
 
 
@@ -860,7 +866,7 @@ function ricalcolaFinanze(
 
 
                             transazioneR.link(
-                                "Check Saldo Origine",
+                                "Check Riconciliazione",
                                 checkCorrente
                             );
                         }
@@ -1245,14 +1251,14 @@ function ricalcolaFinanze(
                     if (
                         !contieneConto(
                             riconciliazione.field(
-                                "Check Saldo Origine"
+                                "Check Riconciliazione"
                             ),
                             checkCorrente.id
                         )
                     ) {
 
                         riconciliazione.link(
-                            "Check Saldo Origine",
+                            "Check Riconciliazione",
                             checkCorrente
                         );
                     }
@@ -1301,7 +1307,7 @@ function ricalcolaFinanze(
                         );
 
                         nuovaRiconciliazione.link(
-                            "Check Saldo Origine",
+                            "Check Riconciliazione",
                             checkCorrente
                         );
 
@@ -1354,14 +1360,14 @@ function ricalcolaFinanze(
                     if (
                         !contieneConto(
                             riconciliazione.field(
-                                "Check Saldo Origine"
+                                "Check Riconciliazione"
                             ),
                             checkCorrente.id
                         )
                     ) {
 
                         riconciliazione.link(
-                            "Check Saldo Origine",
+                            "Check Riconciliazione",
                             checkCorrente
                         );
                     }
@@ -1405,14 +1411,14 @@ function ricalcolaFinanze(
                     if (
                         !contieneConto(
                             riconciliazione.field(
-                                "Check Saldo Origine"
+                                "Check Riconciliazione"
                             ),
                             checkCorrente.id
                         )
                     ) {
 
                         riconciliazione.link(
-                            "Check Saldo Origine",
+                            "Check Riconciliazione",
                             checkCorrente
                         );
                     }
