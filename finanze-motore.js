@@ -1,7 +1,7 @@
 // ============================================================
 // FINANZE
 // MOTORE CENTRALE - RICALCOLO FINANZE
-// VERSIONE: 0.7.0 PRO
+// VERSIONE: 0.7.1 PRO
 // ============================================================
 //
 // LIBRERIA:
@@ -21,12 +21,15 @@
 // Creazione / Modifica / Eliminazione decidono quando
 // richiamare ricalcolaFinanze().
 //
-// LOGICA 0.7:
+// LOGICA 0.7.1:
 // - Primo Check = baseline automatica.
 // - Check successivi = VERIFICA ENTRATE.
 // - Nessuna "Altra Spesa" viene creata finché
 //   "Entrate Verificate" non è true.
 // - Differenza positiva riapre il Check.
+// - Quando un Check viene chiuso in OK, tutte le
+//   transazioni dell'intervallo vengono collegate
+//   a quel Check in modo idempotente.
 //
 // ============================================================
 
@@ -66,7 +69,7 @@ function ricalcolaFinanze(
     ) {
 
         message(
-            "ERRORE v0.7.0: una o più librerie FINANZE non sono accessibili."
+            "ERRORE v0.7.1: una o più librerie FINANZE non sono accessibili."
         );
 
         return;
@@ -218,6 +221,101 @@ function ricalcolaFinanze(
     }
 
 
+
+    function ordinaMovimentiCronologicamente(
+        a,
+        b
+    ) {
+
+        var tempoA =
+            tempoVoce(a);
+
+        var tempoB =
+            tempoVoce(b);
+
+
+        if (
+            tempoA < tempoB
+        ) {
+
+            return -1;
+        }
+
+
+        if (
+            tempoA > tempoB
+        ) {
+
+            return 1;
+        }
+
+
+        // A parità di timestamp, la rettifica automatica
+        // "Altre Spese" deve essere applicata per ultima.
+        // In questo modo un'entrata reale inserita nello stesso
+        // minuto del Check viene mostrata prima della rettifica.
+        var aRettifica =
+            a.field("Origine") ==
+                "Calcolata" &&
+            a.field("Categoria") ==
+                "Altre Spese";
+
+        var bRettifica =
+            b.field("Origine") ==
+                "Calcolata" &&
+            b.field("Categoria") ==
+                "Altre Spese";
+
+
+        if (
+            aRettifica &&
+            !bRettifica
+        ) {
+
+            return 1;
+        }
+
+
+        if (
+            !aRettifica &&
+            bRettifica
+        ) {
+
+            return -1;
+        }
+
+
+        var idA =
+            String(
+                a.id || ""
+            );
+
+        var idB =
+            String(
+                b.id || ""
+            );
+
+
+        if (
+            idA < idB
+        ) {
+
+            return -1;
+        }
+
+
+        if (
+            idA > idB
+        ) {
+
+            return 1;
+        }
+
+
+        return 0;
+    }
+
+
     function arrotonda2(
         valore
     ) {
@@ -283,6 +381,163 @@ function ricalcolaFinanze(
             testo +
             " ]"
         );
+    }
+
+
+
+    function normalizzaCheckRiconciliazione(
+        movimento,
+        checkCorretto
+    ) {
+
+        var collegamenti =
+            movimento.field(
+                "Check Saldo Origine"
+            );
+
+
+        // Caso già perfetto:
+        // una sola relazione, verso il Check corretto.
+        if (
+            collegamenti &&
+            collegamenti.length == 1 &&
+            collegamenti[0].id ==
+                checkCorretto.id
+        ) {
+
+            return;
+        }
+
+
+        // Ogni transazione appartiene a un solo intervallo
+        // di riconciliazione. Rimuoviamo quindi eventuali
+        // relazioni vecchie, errate o duplicate.
+        if (
+            collegamenti &&
+            collegamenti.length > 0
+        ) {
+
+            for (
+                var rc = collegamenti.length - 1;
+                rc >= 0;
+                rc--
+            ) {
+
+                movimento.unlink(
+                    "Check Saldo Origine",
+                    collegamenti[rc]
+                );
+            }
+        }
+
+
+        movimento.link(
+            "Check Saldo Origine",
+            checkCorretto
+        );
+    }
+
+
+    function collegaMovimentiIntervallo(
+        checkPrecedente,
+        checkCorrente,
+        idConto
+    ) {
+
+        var dataPrecedente =
+            checkPrecedente.field(
+                "Data e Ora"
+            );
+
+        var dataCorrente =
+            checkCorrente.field(
+                "Data e Ora"
+            );
+
+
+        if (
+            !dataPrecedente ||
+            !dataCorrente
+        ) {
+
+            return;
+        }
+
+
+        var momentoPrecedente =
+            moment(
+                dataPrecedente
+            );
+
+        var momentoCorrente =
+            moment(
+                dataCorrente
+            );
+
+
+        for (
+            var cr = 0;
+            cr < tutteTransazioni.length;
+            cr++
+        ) {
+
+            var movimento =
+                tutteTransazioni[cr];
+
+
+            if (
+                !contieneConto(
+                    movimento.field(
+                        "Conto"
+                    ),
+                    idConto
+                )
+            ) {
+
+                continue;
+            }
+
+
+            var dataMovimento =
+                movimento.field(
+                    "Data e Ora"
+                );
+
+
+            if (
+                !dataMovimento
+            ) {
+
+                continue;
+            }
+
+
+            var momentoMovimento =
+                moment(
+                    dataMovimento
+                );
+
+
+            // Intervallo contabile:
+            // (Check precedente, Check corrente]
+            if (
+                !momentoMovimento.isAfter(
+                    momentoPrecedente
+                ) ||
+                momentoMovimento.isAfter(
+                    momentoCorrente
+                )
+            ) {
+
+                continue;
+            }
+
+
+            normalizzaCheckRiconciliazione(
+                movimento,
+                checkCorrente
+            );
+        }
     }
 
 
@@ -1179,6 +1434,36 @@ function ricalcolaFinanze(
                     "OK"
                 );
             }
+
+
+            // ================================================
+            // 5K. COLLEGA TUTTI I MOVIMENTI AL CHECK CHIUSO
+            // ================================================
+            //
+            // Solo un Check realmente chiuso (OK + verificato)
+            // diventa il contenitore storico dei movimenti
+            // dell'intervallo (precedente, corrente].
+            //
+            // Questo recupera anche movimenti creati prima
+            // dell'introduzione di questa logica, ad esempio
+            // Spese Fisse già registrate.
+            // ================================================
+
+            if (
+                checkCorrente.field(
+                    "Entrate Verificate"
+                ) === true &&
+                checkCorrente.field(
+                    "Stato di Riconciliazione"
+                ) == "OK"
+            ) {
+
+                collegaMovimentiIntervallo(
+                    checkPrecedente,
+                    checkCorrente,
+                    idConto
+                );
+            }
         }
 
 
@@ -1298,7 +1583,7 @@ function ricalcolaFinanze(
 
 
             movimentiProgressivo.sort(
-                ordinaCronologicamente
+                ordinaMovimentiCronologicamente
             );
 
 
