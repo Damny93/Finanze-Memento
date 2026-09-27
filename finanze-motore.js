@@ -1,7 +1,7 @@
 // ============================================================
 // FINANZE
 // MOTORE CENTRALE - RICALCOLO FINANZE
-// VERSIONE: 0.6.3 PRO
+// VERSIONE: 0.7.0 PRO
 // ============================================================
 //
 // LIBRERIA:
@@ -20,6 +20,13 @@
 // Questo script NON contiene logica di trigger.
 // Creazione / Modifica / Eliminazione decidono quando
 // richiamare ricalcolaFinanze().
+//
+// LOGICA 0.7:
+// - Primo Check = baseline automatica.
+// - Check successivi = VERIFICA ENTRATE.
+// - Nessuna "Altra Spesa" viene creata finché
+//   "Entrate Verificate" non è true.
+// - Differenza positiva riapre il Check.
 //
 // ============================================================
 
@@ -59,7 +66,7 @@ function ricalcolaFinanze(
     ) {
 
         message(
-            "ERRORE v0.6.3: una o più librerie FINANZE non sono accessibili."
+            "ERRORE v0.7.0: una o più librerie FINANZE non sono accessibili."
         );
 
         return;
@@ -377,6 +384,14 @@ function ricalcolaFinanze(
 
             var primoCheck =
                 checkContoOrdinati[0];
+
+
+            // Il primo Check del conto è la baseline.
+            // Non esiste un intervallo precedente da verificare.
+            primoCheck.set(
+                "Entrate Verificate",
+                true
+            );
 
 
             primoCheck.set(
@@ -782,7 +797,127 @@ function ricalcolaFinanze(
 
 
             // ================================================
-            // 5G. DIFFERENZA NEGATIVA
+            // 5G. BLOCCO DI VERIFICA ENTRATE
+            // ================================================
+            //
+            // Un Check successivo al primo NON viene chiuso
+            // automaticamente. Prima deve essere confermato
+            // tramite l'Action "Verifica Entrate".
+            //
+            // Se il Check precedente non è chiuso, anche quello
+            // corrente resta bloccato.
+            // ================================================
+
+            var precedenteVerificato =
+                checkPrecedente.field(
+                    "Entrate Verificate"
+                ) === true;
+
+            var statoPrecedente =
+                checkPrecedente.field(
+                    "Stato di Riconciliazione"
+                );
+
+
+            if (
+                !precedenteVerificato ||
+                statoPrecedente != "OK"
+            ) {
+
+                if (
+                    riconciliazione
+                ) {
+
+                    riconciliazione.set(
+                        "Importo",
+                        0
+                    );
+                }
+
+
+                checkCorrente.set(
+                    "Entrate Verificate",
+                    false
+                );
+
+                checkCorrente.set(
+                    "Differenza da giustificare",
+                    differenza
+                );
+
+                checkCorrente.set(
+                    "Stato di Riconciliazione",
+                    "CHECK PRECEDENTE DA CHIUDERE"
+                );
+
+                continue;
+            }
+
+
+            var entrateVerificate =
+                checkCorrente.field(
+                    "Entrate Verificate"
+                ) === true;
+
+
+            if (
+                !entrateVerificate
+            ) {
+
+                // Qualsiasi riconciliazione precedente viene
+                // sospesa finché il Check non viene verificato.
+                if (
+                    riconciliazione
+                ) {
+
+                    riconciliazione.set(
+                        "Importo",
+                        0
+                    );
+                }
+
+
+                checkCorrente.set(
+                    "Differenza da giustificare",
+                    differenza
+                );
+
+
+                var statoCorrente =
+                    checkCorrente.field(
+                        "Stato di Riconciliazione"
+                    );
+
+
+                // Se l'utente ha già dichiarato "TUTTE REGISTRATE"
+                // ma resta una differenza positiva, manteniamo
+                // l'avviso ENTRATE DA REGISTRARE.
+                if (
+                    differenza > 0 &&
+                    statoCorrente ==
+                        "ENTRATE DA REGISTRARE"
+                ) {
+
+                    checkCorrente.set(
+                        "Stato di Riconciliazione",
+                        "ENTRATE DA REGISTRARE"
+                    );
+
+                } else {
+
+                    checkCorrente.set(
+                        "Stato di Riconciliazione",
+                        "VERIFICA ENTRATE"
+                    );
+                }
+
+
+                continue;
+            }
+
+
+            // ================================================
+            // 5H. DIFFERENZA NEGATIVA - CHECK VERIFICATO
             // ================================================
 
             if (
@@ -928,6 +1063,11 @@ function ricalcolaFinanze(
 
 
                 checkCorrente.set(
+                    "Entrate Verificate",
+                    true
+                );
+
+                checkCorrente.set(
                     "Differenza da giustificare",
                     0
                 );
@@ -940,7 +1080,7 @@ function ricalcolaFinanze(
 
 
             // ================================================
-            // 5H. DIFFERENZA POSITIVA
+            // 5I. DIFFERENZA POSITIVA - CHECK DA RIAPRIRE
             // ================================================
 
             else if (
@@ -973,6 +1113,13 @@ function ricalcolaFinanze(
                 }
 
 
+                // Una differenza positiva non può essere
+                // chiusa come spesa. Il Check torna non verificato.
+                checkCorrente.set(
+                    "Entrate Verificate",
+                    false
+                );
+
                 checkCorrente.set(
                     "Differenza da giustificare",
                     differenza
@@ -980,13 +1127,13 @@ function ricalcolaFinanze(
 
                 checkCorrente.set(
                     "Stato di Riconciliazione",
-                    "ENTRATA DA REGISTRARE"
+                    "ENTRATE DA REGISTRARE"
                 );
             }
 
 
             // ================================================
-            // 5I. DIFFERENZA ZERO
+            // 5J. DIFFERENZA ZERO - CHECK VERIFICATO
             // ================================================
 
             else {
@@ -1016,6 +1163,11 @@ function ricalcolaFinanze(
                     }
                 }
 
+
+                checkCorrente.set(
+                    "Entrate Verificate",
+                    true
+                );
 
                 checkCorrente.set(
                     "Differenza da giustificare",
