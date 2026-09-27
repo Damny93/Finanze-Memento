@@ -1,7 +1,7 @@
 // ============================================================
 // FINANZE
 // MOTORE CENTRALE - RICALCOLO FINANZE
-// VERSIONE: 0.8.0 PRO
+// VERSIONE: 0.8.1 PRO
 // ============================================================
 //
 // LIBRERIA:
@@ -21,7 +21,7 @@
 // Creazione / Modifica / Eliminazione decidono quando
 // richiamare ricalcolaFinanze().
 //
-// LOGICA 0.8.0:
+// LOGICA 0.8.1:
 // - Primo Check = baseline automatica.
 // - Check successivi = VERIFICA ENTRATE.
 // - Nessuna "Altra Spesa" viene creata finché
@@ -35,7 +35,7 @@
 
 function versioneMotoreFinanze() {
 
-    return "0.8.0 PRO";
+    return "0.8.1 PRO";
 }
 
 
@@ -2427,10 +2427,18 @@ function ricalcolaFinanze(
                 )
             );
 
-            // Valore tecnico letto dal campo calcolato
-            // "Stato Aggiornamento".
+            // Lo stato tecnico del Check resta separato
+            // dall'output principale della card.
+            //
+            // "Valore Secondario" deve rimanere vuoto così
+            // non compare più "OK" accanto al Saldo Attuale.
             cardSaldoAttuale.set(
                 "Valore Secondario",
+                ""
+            );
+
+            cardSaldoAttuale.set(
+                "Stato Tecnico Check",
                 statoCheckDashboard
             );
 
