@@ -1,7 +1,7 @@
 // ============================================================
 // FINANZE
 // MOTORE CENTRALE - RICALCOLO FINANZE
-// VERSIONE: 0.8.1 PRO
+// VERSIONE: 0.8.2 PRO
 // ============================================================
 //
 // LIBRERIA:
@@ -14,14 +14,32 @@
 // ricalcolaFinanze()
 //
 // BASE:
-// MOTORE TRANSAZIONI v0.3 TEST - VERIFICATO
+// 0.8.1 PRO - VERIFICATO
 //
-// IMPORTANTE:
-// Questo script NON contiene logica di trigger.
-// Creazione / Modifica / Eliminazione decidono quando
-// richiamare ricalcolaFinanze().
+// NOVITÀ 0.8.2:
 //
-// LOGICA 0.8.1:
+// - CENTRALIZZAZIONE SALDI PER CONTO.
+//
+// Ogni record di [■] Conti riceve:
+//
+//      Saldo Attuale
+//      Saldo Disponibile
+//
+// Saldo Disponibile =
+//
+//      Saldo Attuale
+//      - Salvadanaio già accantonato
+//      - Spese Fisse residue del mese
+//      - Accantonamenti ancora previsti
+//
+// - Funziona anche sui conti senza Check:
+//      Saldo Iniziale + Transazioni.
+//
+// - Dashboard e widget possono leggere direttamente
+//   i valori centralizzati senza ricalcolarli.
+//
+// LOGICA RICONCILIAZIONE:
+//
 // - Primo Check = baseline automatica.
 // - Check successivi = VERIFICA ENTRATE.
 // - Nessuna "Altra Spesa" viene creata finché
@@ -33,9 +51,10 @@
 //
 // ============================================================
 
+
 function versioneMotoreFinanze() {
 
-    return "0.8.1 PRO";
+    return "0.8.2 PRO";
 }
 
 
@@ -50,19 +69,7 @@ function ricalcolaFinanze(
 
 
     // ========================================================
-    // 1. LIBRERIE
-    // ========================================================
-    //
-    // Tutte le librerie usate dal motore vengono ricevute
-    // direttamente dallo script chiamante Memento.
-    //
-    // Il file JavaScript esterno NON risolve librerie da solo.
-    // Questo evita problemi di contesto su Memento Desktop.
-    // ========================================================
-
-
-    // ========================================================
-    // 2. CONTROLLO LIBRERIE
+    // 1. CONTROLLO LIBRERIE
     // ========================================================
 
     if (
@@ -75,7 +82,7 @@ function ricalcolaFinanze(
     ) {
 
         message(
-            "ERRORE v0.8.0: una o più librerie FINANZE non sono accessibili."
+            "ERRORE v0.8.2: una o più librerie FINANZE non sono accessibili."
         );
 
         return;
@@ -83,7 +90,7 @@ function ricalcolaFinanze(
 
 
     // ========================================================
-    // 3. DATI GLOBALI
+    // 2. DATI GLOBALI
     // ========================================================
 
     var tuttiCheck =
@@ -95,13 +102,41 @@ function ricalcolaFinanze(
     var tuttiConti =
         libreriaConti.entries();
 
+    var tutteSpeseFisse =
+        libreriaSpeseFisseDashboard.entries();
 
-    // Le nuove riconciliazioni vengono aggiunte anche
-    // a tutteTransazioni, perché Memento potrebbe non
-    // restituirle immediatamente con entries().
+    var tuttiSalvadanai =
+        libreriaSalvadanaioDashboard.entries();
 
+
+    // Le riconciliazioni create durante l'esecuzione
+    // vengono aggiunte anche all'array locale.
     var riconciliazioniCreate =
         [];
+
+
+    // ========================================================
+    // 3. PERIODO CORRENTE
+    // ========================================================
+
+    var momentoAdessoMotore =
+        moment();
+
+    var inizioMeseMotore =
+        moment(
+            momentoAdessoMotore
+        )
+        .startOf(
+            "month"
+        );
+
+    var fineMeseMotore =
+        moment(
+            momentoAdessoMotore
+        )
+        .endOf(
+            "month"
+        );
 
 
     // ========================================================
@@ -129,6 +164,7 @@ function ricalcolaFinanze(
         ) {
 
             if (
+                collegamenti[i] &&
                 collegamenti[i].id ==
                 idConto
             ) {
@@ -152,9 +188,7 @@ function ricalcolaFinanze(
             );
 
 
-        if (
-            !data
-        ) {
+        if (!data) {
 
             return 0;
         }
@@ -227,7 +261,6 @@ function ricalcolaFinanze(
     }
 
 
-
     function ordinaMovimentiCronologicamente(
         a,
         b
@@ -256,10 +289,6 @@ function ricalcolaFinanze(
         }
 
 
-        // A parità di timestamp, la rettifica automatica
-        // "Altre Spese" deve essere applicata per ultima.
-        // In questo modo un'entrata reale inserita nello stesso
-        // minuto del Check viene mostrata prima della rettifica.
         var aRettifica =
             a.field("Origine") ==
                 "Calcolata" &&
@@ -327,8 +356,36 @@ function ricalcolaFinanze(
     ) {
 
         return Math.round(
-            Number(valore) * 100
+            Number(valore) *
+            100
         ) / 100;
+    }
+
+
+    function dataNelMeseCorrente(
+        data
+    ) {
+
+        if (!data) {
+
+            return false;
+        }
+
+
+        var momento =
+            moment(
+                data
+            );
+
+
+        return (
+            !momento.isBefore(
+                inizioMeseMotore
+            ) &&
+            !momento.isAfter(
+                fineMeseMotore
+            )
+        );
     }
 
 
@@ -343,7 +400,9 @@ function ricalcolaFinanze(
 
 
         if (
-            !isFinite(numero)
+            !isFinite(
+                numero
+            )
         ) {
 
             return "";
@@ -357,7 +416,8 @@ function ricalcolaFinanze(
 
 
         var intero =
-            parti[0].replace(
+            parti[0]
+            .replace(
                 /\B(?=(\d{3})+(?!\d))/g,
                 "."
             );
@@ -390,6 +450,478 @@ function ricalcolaFinanze(
     }
 
 
+    // ========================================================
+    // 4A. SALVADANAIO DEL SINGOLO CONTO
+    // ========================================================
+
+    function calcolaSalvadanaioConto(
+        conto
+    ) {
+
+        var totale =
+            0;
+
+
+        var idConto =
+            conto.id;
+
+
+        for (
+            var i = 0;
+            i < tuttiSalvadanai.length;
+            i++
+        ) {
+
+            var salvadanaio =
+                tuttiSalvadanai[i];
+
+
+            if (
+                !salvadanaio.field(
+                    "Attivo"
+                )
+            ) {
+
+                continue;
+            }
+
+
+            if (
+                !contieneConto(
+                    salvadanaio.field(
+                        "Conto"
+                    ),
+                    idConto
+                )
+            ) {
+
+                continue;
+            }
+
+
+            var valoreEffettivo =
+                Number(
+                    salvadanaio.field(
+                        "Importo Effettivo"
+                    )
+                );
+
+
+            if (
+                !isFinite(
+                    valoreEffettivo
+                )
+            ) {
+
+                var nominale =
+                    Number(
+                        salvadanaio.field(
+                            "Importo Salvadanaio"
+                        )
+                    );
+
+                var anticipato =
+                    Number(
+                        salvadanaio.field(
+                            "Anticipato"
+                        )
+                    );
+
+
+                if (
+                    !isFinite(
+                        nominale
+                    )
+                ) {
+
+                    nominale = 0;
+                }
+
+
+                if (
+                    !isFinite(
+                        anticipato
+                    )
+                ) {
+
+                    anticipato = 0;
+                }
+
+
+                valoreEffettivo =
+                    nominale -
+                    anticipato;
+            }
+
+
+            if (
+                valoreEffettivo < 0
+            ) {
+
+                valoreEffettivo = 0;
+            }
+
+
+            totale +=
+                valoreEffettivo;
+        }
+
+
+        return arrotonda2(
+            totale
+        );
+    }
+
+
+    // ========================================================
+    // 4B. SPESE FISSE RESIDUE DEL SINGOLO CONTO
+    // ========================================================
+
+    function calcolaSpeseResidueConto(
+        conto
+    ) {
+
+        var totale =
+            0;
+
+
+        var idConto =
+            conto.id;
+
+
+        for (
+            var i = 0;
+            i < tutteSpeseFisse.length;
+            i++
+        ) {
+
+            var spesa =
+                tutteSpeseFisse[i];
+
+
+            if (
+                !contieneConto(
+                    spesa.field(
+                        "Conto"
+                    ),
+                    idConto
+                )
+            ) {
+
+                continue;
+            }
+
+
+            var prossimaScadenza =
+                spesa.field(
+                    "Prossima Scadenza"
+                ) ||
+                spesa.field(
+                    "Prima Scadenza"
+                );
+
+
+            if (
+                !dataNelMeseCorrente(
+                    prossimaScadenza
+                )
+            ) {
+
+                continue;
+            }
+
+
+            var importoRata =
+                Number(
+                    spesa.field(
+                        "Importo Rata"
+                    )
+                );
+
+
+            if (
+                !isFinite(
+                    importoRata
+                ) ||
+                importoRata <= 0
+            ) {
+
+                continue;
+            }
+
+
+            totale +=
+                importoRata;
+        }
+
+
+        return arrotonda2(
+            totale
+        );
+    }
+
+
+    // ========================================================
+    // 4C. ACCANTONAMENTI ANCORA PREVISTI DEL CONTO
+    // ========================================================
+
+    function calcolaAccantonamentiPrevistiConto(
+        conto
+    ) {
+
+        var totale =
+            0;
+
+
+        var idConto =
+            conto.id;
+
+
+        for (
+            var i = 0;
+            i < tuttiSalvadanai.length;
+            i++
+        ) {
+
+            var salvadanaio =
+                tuttiSalvadanai[i];
+
+
+            if (
+                !salvadanaio.field(
+                    "Attivo"
+                )
+            ) {
+
+                continue;
+            }
+
+
+            // Il salvadanaio deve appartenere
+            // al conto in analisi.
+            if (
+                !contieneConto(
+                    salvadanaio.field(
+                        "Conto"
+                    ),
+                    idConto
+                )
+            ) {
+
+                continue;
+            }
+
+
+            var modalita =
+                salvadanaio.field(
+                    "Modalità"
+                );
+
+
+            if (
+                modalita !=
+                    "Importo a paga" &&
+                modalita !=
+                    "Percentuale a paga"
+            ) {
+
+                continue;
+            }
+
+
+            var valoreRegola =
+                Number(
+                    salvadanaio.field(
+                        "Valore Regola"
+                    )
+                );
+
+
+            if (
+                !isFinite(
+                    valoreRegola
+                ) ||
+                valoreRegola <= 0
+            ) {
+
+                continue;
+            }
+
+
+            var entrateRiferimento =
+                salvadanaio.field(
+                    "Entrata di Riferimento"
+                );
+
+
+            if (
+                !entrateRiferimento ||
+                entrateRiferimento.length == 0
+            ) {
+
+                continue;
+            }
+
+
+            for (
+                var er = 0;
+                er < entrateRiferimento.length;
+                er++
+            ) {
+
+                var entrata =
+                    entrateRiferimento[er];
+
+
+                if (!entrata) {
+
+                    continue;
+                }
+
+
+                // Anche l'entrata di riferimento
+                // deve appartenere allo stesso conto.
+                if (
+                    !contieneConto(
+                        entrata.field(
+                            "Conto"
+                        ),
+                        idConto
+                    )
+                ) {
+
+                    continue;
+                }
+
+
+                var prossimaEntrata =
+                    entrata.field(
+                        "Prossima Entrata"
+                    ) ||
+                    entrata.field(
+                        "Prima Entrata"
+                    );
+
+
+                if (
+                    !dataNelMeseCorrente(
+                        prossimaEntrata
+                    )
+                ) {
+
+                    continue;
+                }
+
+
+                var quota =
+                    0;
+
+
+                if (
+                    modalita ==
+                    "Importo a paga"
+                ) {
+
+                    quota =
+                        valoreRegola;
+
+                } else {
+
+                    var importoPrevisto =
+                        Number(
+                            entrata.field(
+                                "Importo Previsto"
+                            )
+                        );
+
+
+                    if (
+                        !isFinite(
+                            importoPrevisto
+                        ) ||
+                        importoPrevisto <= 0
+                    ) {
+
+                        continue;
+                    }
+
+
+                    quota =
+                        importoPrevisto *
+                        valoreRegola /
+                        100;
+                }
+
+
+                if (
+                    isFinite(
+                        quota
+                    ) &&
+                    quota > 0
+                ) {
+
+                    totale +=
+                        quota;
+                }
+            }
+        }
+
+
+        return arrotonda2(
+            totale
+        );
+    }
+
+
+    // ========================================================
+    // 4D. SALDO DISPONIBILE CENTRALIZZATO
+    // ========================================================
+
+    function calcolaSaldoDisponibileConto(
+        conto,
+        saldoAttuale
+    ) {
+
+        if (
+            !isFinite(
+                saldoAttuale
+            )
+        ) {
+
+            return null;
+        }
+
+
+        var salvadanaio =
+            calcolaSalvadanaioConto(
+                conto
+            );
+
+
+        var speseResidue =
+            calcolaSpeseResidueConto(
+                conto
+            );
+
+
+        var accantonamentiPrevisti =
+            calcolaAccantonamentiPrevistiConto(
+                conto
+            );
+
+
+        return arrotonda2(
+            saldoAttuale -
+            salvadanaio -
+            speseResidue -
+            accantonamentiPrevisti
+        );
+    }
+
+
+    // ========================================================
+    // 4E. NORMALIZZAZIONE CHECK RICONCILIAZIONE
+    // ========================================================
 
     function normalizzaCheckRiconciliazione(
         movimento,
@@ -402,8 +934,6 @@ function ricalcolaFinanze(
             );
 
 
-        // Caso già perfetto:
-        // una sola relazione, verso il Check corretto.
         if (
             collegamenti &&
             collegamenti.length == 1 &&
@@ -415,16 +945,14 @@ function ricalcolaFinanze(
         }
 
 
-        // Ogni transazione appartiene a un solo intervallo
-        // di riconciliazione. Rimuoviamo quindi eventuali
-        // relazioni vecchie, errate o duplicate.
         if (
             collegamenti &&
             collegamenti.length > 0
         ) {
 
             for (
-                var rc = collegamenti.length - 1;
+                var rc =
+                    collegamenti.length - 1;
                 rc >= 0;
                 rc--
             ) {
@@ -510,9 +1038,7 @@ function ricalcolaFinanze(
                 );
 
 
-            if (
-                !dataMovimento
-            ) {
+            if (!dataMovimento) {
 
                 continue;
             }
@@ -524,8 +1050,6 @@ function ricalcolaFinanze(
                 );
 
 
-            // Intervallo contabile:
-            // (Check precedente, Check corrente]
             if (
                 !momentoMovimento.isAfter(
                     momentoPrecedente
@@ -548,7 +1072,7 @@ function ricalcolaFinanze(
 
 
     // ========================================================
-    // 5. CICLO DI RICOSTRUZIONE DI TUTTI I CONTI
+    // 5. CICLO DI RICOSTRUZIONE CONTI
     // ========================================================
 
     for (
@@ -597,15 +1121,11 @@ function ricalcolaFinanze(
                 tuttiCheck[cc];
 
 
-            var collegamentiCheck =
-                checkConto.field(
-                    "Conto"
-                );
-
-
             if (
                 !contieneConto(
-                    collegamentiCheck,
+                    checkConto.field(
+                        "Conto"
+                    ),
                     idConto
                 )
             ) {
@@ -647,8 +1167,6 @@ function ricalcolaFinanze(
                 checkContoOrdinati[0];
 
 
-            // Il primo Check del conto è la baseline.
-            // Non esiste un intervallo precedente da verificare.
             primoCheck.set(
                 "Entrate Verificate",
                 true
@@ -739,8 +1257,12 @@ function ricalcolaFinanze(
 
 
             if (
-                !isFinite(saldoPrecedente) ||
-                !isFinite(saldoCorrente)
+                !isFinite(
+                    saldoPrecedente
+                ) ||
+                !isFinite(
+                    saldoCorrente
+                )
             ) {
 
                 continue;
@@ -844,9 +1366,7 @@ function ricalcolaFinanze(
                         );
 
 
-                    if (
-                        dataR
-                    ) {
+                    if (dataR) {
 
                         var timestampR =
                             moment(
@@ -948,9 +1468,7 @@ function ricalcolaFinanze(
                     );
 
 
-                if (
-                    !dataMovimento
-                ) {
+                if (!dataMovimento) {
 
                     continue;
                 }
@@ -1013,10 +1531,8 @@ function ricalcolaFinanze(
 
                     entrateIntervallo +=
                         importoMovimento;
-                }
 
-
-                else if (
+                } else if (
                     tipoMovimento ==
                     "Uscita"
                 ) {
@@ -1059,14 +1575,6 @@ function ricalcolaFinanze(
 
             // ================================================
             // 5G. BLOCCO DI VERIFICA ENTRATE
-            // ================================================
-            //
-            // Un Check successivo al primo NON viene chiuso
-            // automaticamente. Prima deve essere confermato
-            // tramite l'Action "Verifica Entrate".
-            //
-            // Se il Check precedente non è chiuso, anche quello
-            // corrente resta bloccato.
             // ================================================
 
             var precedenteVerificato =
@@ -1125,8 +1633,6 @@ function ricalcolaFinanze(
                 !entrateVerificate
             ) {
 
-                // Qualsiasi riconciliazione precedente viene
-                // sospesa finché il Check non viene verificato.
                 if (
                     riconciliazione
                 ) {
@@ -1150,9 +1656,6 @@ function ricalcolaFinanze(
                     );
 
 
-                // Se l'utente ha già dichiarato "TUTTE REGISTRATE"
-                // ma resta una differenza positiva, manteniamo
-                // l'avviso ENTRATE DA REGISTRARE.
                 if (
                     differenza > 0 &&
                     statoCorrente ==
@@ -1178,7 +1681,7 @@ function ricalcolaFinanze(
 
 
             // ================================================
-            // 5H. DIFFERENZA NEGATIVA - CHECK VERIFICATO
+            // 5H. DIFFERENZA NEGATIVA
             // ================================================
 
             if (
@@ -1232,6 +1735,7 @@ function ricalcolaFinanze(
                         "Calcolata"
                     );
 
+
                     if (
                         !contieneConto(
                             riconciliazione.field(
@@ -1262,10 +1766,8 @@ function ricalcolaFinanze(
                             checkCorrente
                         );
                     }
-                }
 
-
-                else {
+                } else {
 
                     var nuovaRiconciliazione =
                         libreriaTransazioni.create({
@@ -1298,9 +1800,6 @@ function ricalcolaFinanze(
                         nuovaRiconciliazione
                     ) {
 
-                        // Le relazioni vengono collegate DOPO create().
-                        // Su Memento Desktop il passaggio delle relazioni
-                        // direttamente dentro create() non è affidabile.
                         nuovaRiconciliazione.link(
                             "Conto",
                             collegamentoConto
@@ -1341,7 +1840,7 @@ function ricalcolaFinanze(
 
 
             // ================================================
-            // 5I. DIFFERENZA POSITIVA - CHECK DA RIAPRIRE
+            // 5I. DIFFERENZA POSITIVA
             // ================================================
 
             else if (
@@ -1356,6 +1855,7 @@ function ricalcolaFinanze(
                         "Importo",
                         0
                     );
+
 
                     if (
                         !contieneConto(
@@ -1374,8 +1874,6 @@ function ricalcolaFinanze(
                 }
 
 
-                // Una differenza positiva non può essere
-                // chiusa come spesa. Il Check torna non verificato.
                 checkCorrente.set(
                     "Entrate Verificate",
                     false
@@ -1394,7 +1892,7 @@ function ricalcolaFinanze(
 
 
             // ================================================
-            // 5J. DIFFERENZA ZERO - CHECK VERIFICATO
+            // 5J. DIFFERENZA ZERO
             // ================================================
 
             else {
@@ -1407,6 +1905,7 @@ function ricalcolaFinanze(
                         "Importo",
                         0
                     );
+
 
                     if (
                         !contieneConto(
@@ -1443,16 +1942,7 @@ function ricalcolaFinanze(
 
 
             // ================================================
-            // 5K. COLLEGA TUTTI I MOVIMENTI AL CHECK CHIUSO
-            // ================================================
-            //
-            // Solo un Check realmente chiuso (OK + verificato)
-            // diventa il contenitore storico dei movimenti
-            // dell'intervallo (precedente, corrente].
-            //
-            // Questo recupera anche movimenti creati prima
-            // dell'introduzione di questa logica, ad esempio
-            // Spese Fisse già registrate.
+            // 5K. COLLEGA MOVIMENTI AL CHECK CHIUSO
             // ================================================
 
             if (
@@ -1540,9 +2030,7 @@ function ricalcolaFinanze(
                     );
 
 
-                if (
-                    !dataFiltro
-                ) {
+                if (!dataFiltro) {
 
                     continue;
                 }
@@ -1643,20 +2131,16 @@ function ricalcolaFinanze(
 
                     saldoProgressivo +=
                         importoProgressivo;
-                }
 
-
-                else if (
+                } else if (
                     tipoProgressivo ==
                     "Uscita"
                 ) {
 
                     saldoProgressivo -=
                         importoProgressivo;
-                }
 
-
-                else {
+                } else {
 
                     continue;
                 }
@@ -1683,9 +2167,6 @@ function ricalcolaFinanze(
             }
 
 
-            // Il saldo progressivo finale rappresenta il saldo
-            // contabile corrente del conto, comprese le
-            // transazioni successive all'ultimo Check.
             saldoContabileCorrenteConto =
                 arrotonda2(
                     saldoProgressivo
@@ -1694,18 +2175,7 @@ function ricalcolaFinanze(
 
 
         // ====================================================
-        // 7. SALDO ATTUALE DEL CONTO = SALDO CONTABILE CORRENTE
-        // ====================================================
-        //
-        // Priorità:
-        // 1. Saldo progressivo ricostruito da Saldo Iniziale
-        //    + tutte le Transazioni.
-        // 2. Fallback: ultimo Check + movimenti successivi.
-        // 3. Fallback finale: Saldo Iniziale.
-        //
-        // In questo modo "Saldo Attuale" non resta fermo
-        // all'ultimo Check: rappresenta ciò che il sistema
-        // conosce ADESSO.
+        // 7. SALDO ATTUALE CENTRALIZZATO
         // ====================================================
 
         var saldoCorrenteConto =
@@ -1727,12 +2197,14 @@ function ricalcolaFinanze(
                         checkContoOrdinati.length - 1
                     ];
 
+
                 var saldoUltimoCheck =
                     Number(
                         ultimoCheckConto.field(
                             "Disponibilità Netta"
                         )
                     );
+
 
                 var dataUltimoCheck =
                     ultimoCheckConto.field(
@@ -1751,6 +2223,7 @@ function ricalcolaFinanze(
                         arrotonda2(
                             saldoUltimoCheck
                         );
+
 
                     var momentoUltimoCheckConto =
                         moment(
@@ -1805,6 +2278,7 @@ function ricalcolaFinanze(
                                 "Tipo"
                             );
 
+
                         var importoSuccessivo =
                             Number(
                                 movimentoSuccessivo.field(
@@ -1851,6 +2325,9 @@ function ricalcolaFinanze(
         }
 
 
+        // Fallback finale:
+        // anche senza Data Saldo Iniziale e senza Check
+        // mostriamo almeno il Saldo Iniziale.
         if (
             !isFinite(
                 saldoCorrenteConto
@@ -1867,6 +2344,10 @@ function ricalcolaFinanze(
         }
 
 
+        // ====================================================
+        // 8. SCRITTURA SALDO ATTUALE
+        // ====================================================
+
         if (
             isFinite(
                 saldoCorrenteConto
@@ -1878,21 +2359,47 @@ function ricalcolaFinanze(
                 saldoCorrenteConto
             );
         }
+
+
+        // ====================================================
+        // 9. SALDO DISPONIBILE CENTRALIZZATO
+        // ====================================================
+        //
+        // Questa è la nuova fonte unica per Dashboard/Card.
+        //
+        // Saldo Disponibile =
+        //
+        // Saldo Attuale
+        // - Salvadanaio già accantonato
+        // - Spese ancora da sostenere questo mese
+        // - Accantonamenti ancora previsti questo mese
+        //
+        // ====================================================
+
+        var saldoDisponibileConto =
+            calcolaSaldoDisponibileConto(
+                conto,
+                saldoCorrenteConto
+            );
+
+
+        if (
+            saldoDisponibileConto !== null &&
+            isFinite(
+                saldoDisponibileConto
+            )
+        ) {
+
+            conto.set(
+                "Saldo Disponibile",
+                saldoDisponibileConto
+            );
+        }
     }
 
 
     // ========================================================
-    // 8. STATO CHECK PER LA DASHBOARD
-    // ========================================================
-    //
-    // Il valore numerico di Saldo Attuale è corrente.
-    // Lo stato sotto la card descrive invece quanto è affidabile
-    // il controllo bancario reale.
-    //
-    // Con più conti attivi, quando tutti sono OK viene usata
-    // la data del Check PIÙ VECCHIO tra gli ultimi Check di ogni
-    // conto: così il totale aggregato non sembra più fresco di
-    // quanto sia realmente.
+    // 10. STATO CHECK PER DASHBOARD
     // ========================================================
 
     var momentoUltimoCheckDashboard =
@@ -1956,6 +2463,7 @@ function ricalcolaFinanze(
         var idContoDashboard =
             contoCheckDashboard.id;
 
+
         var checkDashboardConto =
             [];
 
@@ -2008,6 +2516,7 @@ function ricalcolaFinanze(
                 checkDashboardConto.length - 1
             ];
 
+
         var dataUltimoCheckDashboardConto =
             ultimoCheckDashboardConto.field(
                 "Data e Ora"
@@ -2042,6 +2551,7 @@ function ricalcolaFinanze(
                 "Stato di Riconciliazione"
             );
 
+
         var entrateVerificateUltimoCheck =
             ultimoCheckDashboardConto.field(
                 "Entrate Verificate"
@@ -2060,7 +2570,7 @@ function ricalcolaFinanze(
 
         } else if (
             statoUltimoCheck ==
-            "ENTRATA DA REGISTRARE"
+            "ENTRATE DA REGISTRARE"
         ) {
 
             impostaStatoDashboard(
@@ -2070,8 +2580,9 @@ function ricalcolaFinanze(
 
         } else if (
             statoUltimoCheck ==
-            "VERIFICA ENTRATE" ||
-            entrateVerificateUltimoCheck !== true
+                "VERIFICA ENTRATE" ||
+            entrateVerificateUltimoCheck !==
+                true
         ) {
 
             impostaStatoDashboard(
@@ -2115,7 +2626,7 @@ function ricalcolaFinanze(
 
 
     // ========================================================
-    // 9. DASHBOARD 0.8
+    // 11. DASHBOARD LEGACY
     // ========================================================
 
     if (
@@ -2126,12 +2637,23 @@ function ricalcolaFinanze(
             libreriaDashboard.entries();
 
 
-        var cardSaldoAttuale = null;
-        var cardSaldoDisponibile = null;
-        var cardSalvadanaio = null;
-        var cardAltreSpeseMese = null;
-        var cardSpeseFisseMese = null;
-        var cardEntrateUsciteMese = null;
+        var cardSaldoAttuale =
+            null;
+
+        var cardSaldoDisponibile =
+            null;
+
+        var cardSalvadanaio =
+            null;
+
+        var cardAltreSpeseMese =
+            null;
+
+        var cardSpeseFisseMese =
+            null;
+
+        var cardEntrateUsciteMese =
+            null;
 
 
         for (
@@ -2142,6 +2664,7 @@ function ricalcolaFinanze(
 
             var card =
                 cardsDashboard[c];
+
 
             var codiceKPI =
                 card.field(
@@ -2201,7 +2724,7 @@ function ricalcolaFinanze(
 
 
         // ====================================================
-        // 9A. FORMATO DASHBOARD
+        // 11A. FORMATO
         // ====================================================
 
         function formattaEuroDashboard(
@@ -2215,7 +2738,9 @@ function ricalcolaFinanze(
 
 
             if (
-                !isFinite(numero)
+                !isFinite(
+                    numero
+                )
             ) {
 
                 return "";
@@ -2229,7 +2754,8 @@ function ricalcolaFinanze(
 
 
             var intero =
-                parti[0].replace(
+                parti[0]
+                .replace(
                     /\B(?=(\d{3})+(?!\d))/g,
                     "."
                 );
@@ -2301,9 +2827,7 @@ function ricalcolaFinanze(
             fine
         ) {
 
-            if (
-                !data
-            ) {
+            if (!data) {
 
                 return false;
             }
@@ -2327,11 +2851,12 @@ function ricalcolaFinanze(
 
 
         // ====================================================
-        // 9B. PERIODO CORRENTE
+        // 11B. PERIODO
         // ====================================================
 
         var momentoAdessoDashboard =
             moment();
+
 
         var inizioMese =
             moment(
@@ -2341,6 +2866,7 @@ function ricalcolaFinanze(
                 "month"
             );
 
+
         var fineMese =
             moment(
                 momentoAdessoDashboard
@@ -2348,6 +2874,7 @@ function ricalcolaFinanze(
             .endOf(
                 "month"
             );
+
 
         var periodoDashboard =
             nomeMeseDashboard(
@@ -2358,10 +2885,31 @@ function ricalcolaFinanze(
 
 
         // ====================================================
-        // 9C. SALDO ATTUALE COMPLESSIVO = CONTABILE CORRENTE
+        // 11C. TOTALI CENTRALIZZATI DAI CONTI
+        // ====================================================
+        //
+        // IMPORTANTE:
+        //
+        // Non ricalcoliamo il disponibile.
+        //
+        // Sommiamo semplicemente:
+        //
+        //      Conti.Saldo Attuale
+        //      Conti.Saldo Disponibile
+        //
+        // Questo garantisce che:
+        //
+        // CARD CONTO
+        // HEADER CONTI
+        // DASHBOARD
+        //
+        // leggano gli stessi valori.
         // ====================================================
 
         var saldoAttualeDashboard =
+            0;
+
+        var saldoDisponibileDashboard =
             0;
 
 
@@ -2402,6 +2950,25 @@ function ricalcolaFinanze(
                 saldoAttualeDashboard +=
                     saldoConto;
             }
+
+
+            var disponibileConto =
+                Number(
+                    contoDashboard.field(
+                        "Saldo Disponibile"
+                    )
+                );
+
+
+            if (
+                isFinite(
+                    disponibileConto
+                )
+            ) {
+
+                saldoDisponibileDashboard +=
+                    disponibileConto;
+            }
         }
 
 
@@ -2410,6 +2977,16 @@ function ricalcolaFinanze(
                 saldoAttualeDashboard
             );
 
+
+        saldoDisponibileDashboard =
+            arrotonda2(
+                saldoDisponibileDashboard
+            );
+
+
+        // ====================================================
+        // 11D. SALDO ATTUALE
+        // ====================================================
 
         if (
             cardSaldoAttuale
@@ -2420,6 +2997,7 @@ function ricalcolaFinanze(
                 saldoAttualeDashboard
             );
 
+
             cardSaldoAttuale.set(
                 "Valore Saldo",
                 formattaSaldoDashboard(
@@ -2427,15 +3005,12 @@ function ricalcolaFinanze(
                 )
             );
 
-            // Lo stato tecnico del Check resta separato
-            // dall'output principale della card.
-            //
-            // "Valore Secondario" deve rimanere vuoto così
-            // non compare più "OK" accanto al Saldo Attuale.
+
             cardSaldoAttuale.set(
                 "Valore Secondario",
                 ""
             );
+
 
             cardSaldoAttuale.set(
                 "Stato Tecnico Check",
@@ -2458,364 +3033,172 @@ function ricalcolaFinanze(
 
 
         // ====================================================
-        // 9D. SPESE FISSE: REPORT MENSILE + RESIDUO REALE
+        // 11E. SALDO DISPONIBILE
         // ====================================================
-        //
-        // Report mensile:
-        // usa ancora "Importo Mese [1]" come budget/rateo.
-        //
-        // Saldo Disponibile:
-        // sottrae invece SOLO le rate realmente ancora da
-        // sostenere nel mese corrente, usando Prossima Scadenza
-        // e Importo Rata. Così una rata già confermata non viene
-        // sottratta due volte.
+
+        if (
+            cardSaldoDisponibile
+        ) {
+
+            cardSaldoDisponibile.set(
+                "Valore Saldo",
+                formattaSaldoDashboard(
+                    saldoDisponibileDashboard
+                )
+            );
+
+
+            cardSaldoDisponibile.set(
+                "Valore Secondario",
+                ""
+            );
+        }
+
+
+        // ====================================================
+        // 11F. SPESE FISSE - REPORT MENSILE
         // ====================================================
 
         var speseFissePrevisteMese =
             0;
 
-        var speseFisseResidue =
-            0;
 
-
-        if (
-            libreriaSpeseFisseDashboard
+        for (
+            var sf = 0;
+            sf < tutteSpeseFisse.length;
+            sf++
         ) {
 
-            var elencoSpeseFisse =
-                libreriaSpeseFisseDashboard
-                .entries();
+            var spesaFissa =
+                tutteSpeseFisse[sf];
 
 
-            for (
-                var sf = 0;
-                sf < elencoSpeseFisse.length;
-                sf++
+            var importoMensile =
+                Number(
+                    spesaFissa.field(
+                        "Importo Mese [1]"
+                    )
+                );
+
+
+            if (
+                isFinite(
+                    importoMensile
+                )
             ) {
 
-                var spesaFissa =
-                    elencoSpeseFisse[sf];
-
-                var importoMensile =
-                    Number(
-                        spesaFissa.field(
-                            "Importo Mese [1]"
-                        )
-                    );
-
-
-                if (
-                    isFinite(
-                        importoMensile
-                    )
-                ) {
-
-                    speseFissePrevisteMese +=
-                        importoMensile;
-                }
-
-
-                var prossimaScadenza =
-                    spesaFissa.field(
-                        "Prossima Scadenza"
-                    ) ||
-                    spesaFissa.field(
-                        "Prima Scadenza"
-                    );
-
-                var importoRata =
-                    Number(
-                        spesaFissa.field(
-                            "Importo Rata"
-                        )
-                    );
-
-
-                if (
-                    isFinite(
-                        importoRata
-                    ) &&
-                    importoRata > 0 &&
-                    dataNelMeseDashboard(
-                        prossimaScadenza,
-                        inizioMese,
-                        fineMese
-                    )
-                ) {
-
-                    speseFisseResidue +=
-                        importoRata;
-                }
+                speseFissePrevisteMese +=
+                    importoMensile;
             }
-
-
-            speseFissePrevisteMese =
-                arrotonda2(
-                    speseFissePrevisteMese
-                );
-
-            speseFisseResidue =
-                arrotonda2(
-                    speseFisseResidue
-                );
         }
 
 
+        speseFissePrevisteMese =
+            arrotonda2(
+                speseFissePrevisteMese
+            );
+
+
         // ====================================================
-        // 9E. SALVADANAI + ACCANTONAMENTI ANCORA PREVISTI
+        // 11G. SALVADANAIO COMPLESSIVO
         // ====================================================
 
         var totaleSalvadanaio =
             0;
 
-        var accantonamentiPrevistiResidui =
-            0;
 
-
-        if (
-            libreriaSalvadanaioDashboard
+        for (
+            var sv = 0;
+            sv < tuttiSalvadanai.length;
+            sv++
         ) {
 
-            var elencoSalvadanai =
-                libreriaSalvadanaioDashboard
-                .entries();
+            var salvadanaio =
+                tuttiSalvadanai[sv];
 
 
-            for (
-                var sv = 0;
-                sv < elencoSalvadanai.length;
-                sv++
+            if (
+                !salvadanaio.field(
+                    "Attivo"
+                )
             ) {
 
-                var salvadanaio =
-                    elencoSalvadanai[sv];
-
-
-                if (
-                    !salvadanaio.field(
-                        "Attivo"
-                    )
-                ) {
-
-                    continue;
-                }
-
-
-                var valoreEffettivo =
-                    Number(
-                        salvadanaio.field(
-                            "Importo Effettivo"
-                        )
-                    );
-
-
-                if (
-                    !isFinite(
-                        valoreEffettivo
-                    )
-                ) {
-
-                    var nominale =
-                        Number(
-                            salvadanaio.field(
-                                "Importo Salvadanaio"
-                            )
-                        );
-
-                    var anticipato =
-                        Number(
-                            salvadanaio.field(
-                                "Anticipato"
-                            )
-                        );
-
-
-                    if (
-                        !isFinite(nominale)
-                    ) {
-
-                        nominale = 0;
-                    }
-
-
-                    if (
-                        !isFinite(anticipato)
-                    ) {
-
-                        anticipato = 0;
-                    }
-
-
-                    valoreEffettivo =
-                        nominale -
-                        anticipato;
-                }
-
-
-                if (
-                    valoreEffettivo < 0
-                ) {
-
-                    valoreEffettivo = 0;
-                }
-
-
-                totaleSalvadanaio +=
-                    valoreEffettivo;
-
-
-                // --------------------------------------------
-                // QUOTA DA ACCANTONARE ANCORA QUESTO MESE
-                // --------------------------------------------
-
-                var modalitaSalvadanaio =
-                    salvadanaio.field(
-                        "Modalità"
-                    );
-
-
-                if (
-                    modalitaSalvadanaio !=
-                        "Importo a paga" &&
-                    modalitaSalvadanaio !=
-                        "Percentuale a paga"
-                ) {
-
-                    continue;
-                }
-
-
-                var valoreRegolaSalvadanaio =
-                    Number(
-                        salvadanaio.field(
-                            "Valore Regola"
-                        )
-                    );
-
-
-                if (
-                    !isFinite(
-                        valoreRegolaSalvadanaio
-                    ) ||
-                    valoreRegolaSalvadanaio <= 0
-                ) {
-
-                    continue;
-                }
-
-
-                var entrateRiferimento =
-                    salvadanaio.field(
-                        "Entrata di Riferimento"
-                    );
-
-
-                if (
-                    !entrateRiferimento ||
-                    entrateRiferimento.length == 0
-                ) {
-
-                    continue;
-                }
-
-
-                for (
-                    var er = 0;
-                    er < entrateRiferimento.length;
-                    er++
-                ) {
-
-                    var entrataRiferimento =
-                        entrateRiferimento[er];
-
-                    var prossimaEntrata =
-                        entrataRiferimento.field(
-                            "Prossima Entrata"
-                        ) ||
-                        entrataRiferimento.field(
-                            "Prima Entrata"
-                        );
-
-
-                    if (
-                        !dataNelMeseDashboard(
-                            prossimaEntrata,
-                            inizioMese,
-                            fineMese
-                        )
-                    ) {
-
-                        continue;
-                    }
-
-
-                    var quotaPrevista =
-                        0;
-
-
-                    if (
-                        modalitaSalvadanaio ==
-                        "Importo a paga"
-                    ) {
-
-                        quotaPrevista =
-                            valoreRegolaSalvadanaio;
-
-                    } else if (
-                        modalitaSalvadanaio ==
-                        "Percentuale a paga"
-                    ) {
-
-                        var importoEntrataPrevisto =
-                            Number(
-                                entrataRiferimento.field(
-                                    "Importo Previsto"
-                                )
-                            );
-
-
-                        if (
-                            !isFinite(
-                                importoEntrataPrevisto
-                            ) ||
-                            importoEntrataPrevisto <= 0
-                        ) {
-
-                            continue;
-                        }
-
-
-                        quotaPrevista =
-                            importoEntrataPrevisto *
-                            valoreRegolaSalvadanaio /
-                            100;
-                    }
-
-
-                    if (
-                        isFinite(
-                            quotaPrevista
-                        ) &&
-                        quotaPrevista > 0
-                    ) {
-
-                        accantonamentiPrevistiResidui +=
-                            quotaPrevista;
-                    }
-                }
+                continue;
             }
 
 
-            totaleSalvadanaio =
-                arrotonda2(
-                    totaleSalvadanaio
+            var valoreEffettivo =
+                Number(
+                    salvadanaio.field(
+                        "Importo Effettivo"
+                    )
                 );
 
-            accantonamentiPrevistiResidui =
-                arrotonda2(
-                    accantonamentiPrevistiResidui
-                );
+
+            if (
+                !isFinite(
+                    valoreEffettivo
+                )
+            ) {
+
+                var nominale =
+                    Number(
+                        salvadanaio.field(
+                            "Importo Salvadanaio"
+                        )
+                    );
+
+                var anticipato =
+                    Number(
+                        salvadanaio.field(
+                            "Anticipato"
+                        )
+                    );
+
+
+                if (
+                    !isFinite(
+                        nominale
+                    )
+                ) {
+
+                    nominale = 0;
+                }
+
+
+                if (
+                    !isFinite(
+                        anticipato
+                    )
+                ) {
+
+                    anticipato = 0;
+                }
+
+
+                valoreEffettivo =
+                    nominale -
+                    anticipato;
+            }
+
+
+            if (
+                valoreEffettivo < 0
+            ) {
+
+                valoreEffettivo = 0;
+            }
+
+
+            totaleSalvadanaio +=
+                valoreEffettivo;
         }
+
+
+        totaleSalvadanaio =
+            arrotonda2(
+                totaleSalvadanaio
+            );
 
 
         if (
@@ -2829,6 +3212,7 @@ function ricalcolaFinanze(
                 )
             );
 
+
             cardSalvadanaio.set(
                 "Valore Secondario",
                 ""
@@ -2837,18 +3221,20 @@ function ricalcolaFinanze(
 
 
         // ====================================================
-        // 9F. TOTALI TRANSAZIONI DEL MESE FINO AD ADESSO
-        // ====================================================
-        //
-        // Non sono più congelati all'ultimo Check.
-        // Il Check certifica il saldo; i report mostrano invece
-        // tutto ciò che l'app conosce nel mese corrente.
+        // 11H. TRANSAZIONI DEL MESE
         // ====================================================
 
-        var altreSpeseMese = 0;
-        var speseFisseMese = 0;
-        var entrateMese = 0;
-        var usciteMese = 0;
+        var altreSpeseMese =
+            0;
+
+        var speseFisseMese =
+            0;
+
+        var entrateMese =
+            0;
+
+        var usciteMese =
+            0;
 
 
         for (
@@ -2860,20 +3246,24 @@ function ricalcolaFinanze(
             var movimentoKPI =
                 tutteTransazioni[x];
 
+
             var categoriaKPI =
                 movimentoKPI.field(
                     "Categoria"
                 );
+
 
             var tipoKPI =
                 movimentoKPI.field(
                     "Tipo"
                 );
 
+
             var dataKPI =
                 movimentoKPI.field(
                     "Data e Ora"
                 );
+
 
             var importoKPI =
                 Number(
@@ -2985,49 +3375,7 @@ function ricalcolaFinanze(
 
 
         // ====================================================
-        // 9G. SALDO DISPONIBILE
-        // ====================================================
-        //
-        // Quanto posso ancora spendere:
-        //
-        // Saldo contabile corrente
-        // - Salvadanaio già accantonato
-        // - Spese Fisse ancora da sostenere nel mese
-        // - Accantonamenti del mese ancora da effettuare
-        //
-        // Le rate già pagate e gli accantonamenti già creati
-        // NON vengono sottratti di nuovo.
-        // ====================================================
-
-        var saldoDisponibile =
-            arrotonda2(
-                saldoAttualeDashboard -
-                totaleSalvadanaio -
-                speseFisseResidue -
-                accantonamentiPrevistiResidui
-            );
-
-
-        if (
-            cardSaldoDisponibile
-        ) {
-
-            cardSaldoDisponibile.set(
-                "Valore Saldo",
-                formattaSaldoDashboard(
-                    saldoDisponibile
-                )
-            );
-
-            cardSaldoDisponibile.set(
-                "Valore Secondario",
-                ""
-            );
-        }
-
-
-        // ====================================================
-        // 9H. ALTRE SPESE
+        // 11I. ALTRE SPESE
         // ====================================================
 
         if (
@@ -3039,12 +3387,14 @@ function ricalcolaFinanze(
                 altreSpeseMese
             );
 
+
             cardAltreSpeseMese.set(
                 "Valore Uscita",
                 formattaEuroDashboard(
                     altreSpeseMese
                 )
             );
+
 
             cardAltreSpeseMese.set(
                 "Periodo Dashboard",
@@ -3054,7 +3404,7 @@ function ricalcolaFinanze(
 
 
         // ====================================================
-        // 9I. SPESE FISSE
+        // 11J. SPESE FISSE
         // ====================================================
 
         if (
@@ -3068,6 +3418,7 @@ function ricalcolaFinanze(
                 )
             );
 
+
             cardSpeseFisseMese.set(
                 "Valore Secondario",
                 "/ " +
@@ -3075,6 +3426,7 @@ function ricalcolaFinanze(
                     speseFissePrevisteMese
                 )
             );
+
 
             cardSpeseFisseMese.set(
                 "Periodo Dashboard",
@@ -3084,7 +3436,7 @@ function ricalcolaFinanze(
 
 
         // ====================================================
-        // 9J. ENTRATE / USCITE
+        // 11K. ENTRATE / USCITE
         // ====================================================
 
         if (
@@ -3098,10 +3450,12 @@ function ricalcolaFinanze(
                 )
             );
 
+
             cardEntrateUsciteMese.set(
                 "Separatore",
                 "/"
             );
+
 
             cardEntrateUsciteMese.set(
                 "Valore Uscita",
@@ -3110,10 +3464,12 @@ function ricalcolaFinanze(
                 )
             );
 
+
             cardEntrateUsciteMese.set(
                 "Periodo Dashboard",
                 periodoDashboard
             );
+
 
             cardEntrateUsciteMese.set(
                 "Valore Secondario",
@@ -3123,7 +3479,7 @@ function ricalcolaFinanze(
 
 
         // ====================================================
-        // 9K. CONTROLLI DASHBOARD
+        // 11L. CONTROLLI DASHBOARD
         // ====================================================
 
         if (
