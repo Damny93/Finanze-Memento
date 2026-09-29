@@ -16,7 +16,7 @@
 // BASE:
 // 0.8.1 PRO - VERIFICATO
 //
-// NOVITÀ 0.8.2:
+// NOVITÀ 0.8.3:
 //
 // - CENTRALIZZAZIONE SALDI PER CONTO.
 //
@@ -54,7 +54,7 @@
 
 function versioneMotoreFinanze() {
 
-    return "0.8.2 PRO";
+    return "0.8.3 PRO";
 }
 
 
@@ -3544,3 +3544,491 @@ function ricalcolaFinanze(
 
 
 } // fine ricalcolaFinanze()
+// ============================================================
+// FINANZE
+// MOTORE CENTRALE - SALVADANAI
+// VERSIONE MOTORE: 0.8.3 PRO
+// ============================================================
+//
+// FUNZIONE PUBBLICA:
+// ricalcolaSalvadanai()
+//
+// SCOPO:
+//
+// Fonte unica di verità per il ricalcolo di:
+//
+// Importo Salvadanaio
+// = Importo Iniziale + Accantonamenti
+//
+// Anticipato
+// = Anticipi - Rimborsi
+//
+// Importo Effettivo
+// = Importo Salvadanaio - Anticipato
+//
+// Al termine richiama automaticamente:
+//
+// ricalcolaFinanze()
+//
+// ============================================================
+
+
+function ricalcolaSalvadanai() {
+
+
+    // ========================================================
+    // 1. FUNZIONI LOCALI
+    // ========================================================
+
+    function arrotonda2Salvadanaio(
+        valore
+    ) {
+
+        return Math.round(
+            Number(valore) * 100
+        ) / 100;
+    }
+
+
+    function contieneRelazioneSalvadanaio(
+        relazione,
+        idCercato
+    ) {
+
+        if (
+            !relazione ||
+            !idCercato
+        ) {
+
+            return false;
+        }
+
+
+        // Protezione anche nel caso in cui Memento
+        // restituisca una singola relazione.
+
+        if (
+            typeof relazione.length ==
+            "undefined"
+        ) {
+
+            relazione =
+                [relazione];
+        }
+
+
+        for (
+            var i = 0;
+            i < relazione.length;
+            i++
+        ) {
+
+            if (
+                relazione[i] &&
+                relazione[i].id ==
+                idCercato
+            ) {
+
+                return true;
+            }
+        }
+
+
+        return false;
+    }
+
+
+    // ========================================================
+    // 2. LIBRERIE
+    // ========================================================
+
+    var libreriaSalvadanaio =
+        libByName(
+            "[■] Salvadanaio"
+        );
+
+
+    var libreriaMovimentiSalvadanaio =
+        libByName(
+            "[■] Movimenti Salvadanaio"
+        );
+
+
+    var libreriaSaldo =
+        libByName(
+            "[■] Saldo"
+        );
+
+
+    var libreriaTransazioni =
+        libByName(
+            "[■] Transazioni"
+        );
+
+
+    var libreriaConti =
+        libByName(
+            "[■] Conti"
+        );
+
+
+    var libreriaDashboard =
+        libByName(
+            "[■] Dashboard Finanze"
+        );
+
+
+    var libreriaSpeseFisse =
+        libByName(
+            "[■] Spese Fisse"
+        );
+
+
+    // ========================================================
+    // 3. CONTROLLO LIBRERIE
+    // ========================================================
+
+    if (
+        !libreriaSalvadanaio ||
+        !libreriaMovimentiSalvadanaio ||
+        !libreriaSaldo ||
+        !libreriaTransazioni ||
+        !libreriaConti ||
+        !libreriaDashboard ||
+        !libreriaSpeseFisse
+    ) {
+
+        message(
+            "ERRORE v0.8.3: una o più librerie FINANZE non sono accessibili."
+        );
+
+
+        return false;
+    }
+
+
+    // ========================================================
+    // 4. DATI
+    // ========================================================
+
+    var salvadanai =
+        libreriaSalvadanaio.entries();
+
+
+    var movimenti =
+        libreriaMovimentiSalvadanaio.entries();
+
+
+    // ========================================================
+    // 5. RICALCOLO DI OGNI SALVADANAIO
+    // ========================================================
+
+    for (
+        var s = 0;
+        s < salvadanai.length;
+        s++
+    ) {
+
+        var salvadanaio =
+            salvadanai[s];
+
+
+        // ----------------------------------------------------
+        // 5A. IMPORTO INIZIALE
+        // ----------------------------------------------------
+
+        var base =
+            Number(
+                salvadanaio.field(
+                    "Importo Iniziale"
+                )
+            );
+
+
+        if (
+            !isFinite(base)
+        ) {
+
+            base = 0;
+        }
+
+
+        base =
+            arrotonda2Salvadanaio(
+                base
+            );
+
+
+        // ----------------------------------------------------
+        // 5B. TOTALI MOVIMENTI
+        // ----------------------------------------------------
+
+        var totaleAccantonamenti =
+            0;
+
+
+        var totaleAnticipi =
+            0;
+
+
+        var totaleRimborsi =
+            0;
+
+
+        var ultimoIncremento =
+            null;
+
+
+        // ====================================================
+        // 6. MOVIMENTI DEL SALVADANAIO
+        // ====================================================
+
+        for (
+            var m = 0;
+            m < movimenti.length;
+            m++
+        ) {
+
+            var movimento =
+                movimenti[m];
+
+
+            if (
+                !contieneRelazioneSalvadanaio(
+                    movimento.field(
+                        "Salvadanaio"
+                    ),
+                    salvadanaio.id
+                )
+            ) {
+
+                continue;
+            }
+
+
+            var importo =
+                Number(
+                    movimento.field(
+                        "Importo"
+                    )
+                );
+
+
+            if (
+                !isFinite(importo) ||
+                importo <= 0
+            ) {
+
+                continue;
+            }
+
+
+            importo =
+                arrotonda2Salvadanaio(
+                    importo
+                );
+
+
+            var tipo =
+                String(
+                    movimento.field(
+                        "Tipo di Movimento"
+                    ) || ""
+                );
+
+
+            // ------------------------------------------------
+            // ACCANTONAMENTO
+            // ------------------------------------------------
+
+            if (
+                tipo ==
+                "Accantonamento"
+            ) {
+
+                totaleAccantonamenti +=
+                    importo;
+
+
+                var dataMovimento =
+                    movimento.field(
+                        "Data e Ora"
+                    );
+
+
+                if (
+                    dataMovimento
+                ) {
+
+                    var timestamp =
+                        new Date(
+                            dataMovimento
+                        )
+                        .getTime();
+
+
+                    if (
+                        !isNaN(timestamp) &&
+                        (
+                            ultimoIncremento === null ||
+                            timestamp >
+                            ultimoIncremento
+                        )
+                    ) {
+
+                        ultimoIncremento =
+                            timestamp;
+                    }
+                }
+            }
+
+
+            // ------------------------------------------------
+            // ANTICIPO
+            // ------------------------------------------------
+
+            else if (
+                tipo ==
+                "Anticipo"
+            ) {
+
+                totaleAnticipi +=
+                    importo;
+            }
+
+
+            // ------------------------------------------------
+            // RIMBORSO
+            // ------------------------------------------------
+
+            else if (
+                tipo ==
+                "Rimborso"
+            ) {
+
+                totaleRimborsi +=
+                    importo;
+            }
+        }
+
+
+        // ====================================================
+        // 7. IMPORTO NOMINALE
+        // ====================================================
+
+        var nominale =
+            arrotonda2Salvadanaio(
+                base +
+                totaleAccantonamenti
+            );
+
+
+        // ====================================================
+        // 8. ANTICIPATO
+        // ====================================================
+
+        var anticipato =
+            arrotonda2Salvadanaio(
+                totaleAnticipi -
+                totaleRimborsi
+            );
+
+
+        if (
+            anticipato < 0
+        ) {
+
+            anticipato = 0;
+        }
+
+
+        if (
+            anticipato >
+            nominale
+        ) {
+
+            anticipato =
+                nominale;
+        }
+
+
+        // ====================================================
+        // 9. IMPORTO EFFETTIVO
+        // ====================================================
+
+        var effettivo =
+            arrotonda2Salvadanaio(
+                nominale -
+                anticipato
+            );
+
+
+        if (
+            effettivo < 0
+        ) {
+
+            effettivo = 0;
+        }
+
+
+        // ====================================================
+        // 10. SCRITTURA
+        // ====================================================
+
+        salvadanaio.set(
+            "Importo Salvadanaio",
+            nominale
+        );
+
+
+        salvadanaio.set(
+            "Anticipato",
+            anticipato
+        );
+
+
+        salvadanaio.set(
+            "Importo Effettivo",
+            effettivo
+        );
+
+
+        if (
+            ultimoIncremento !== null
+        ) {
+
+            salvadanaio.set(
+                "Ultimo Incremento",
+                ultimoIncremento
+            );
+        }
+    }
+
+
+    // ========================================================
+    // 11. RICALCOLO FINANZE
+    // ========================================================
+    //
+    // Importo Effettivo è ora aggiornato.
+    //
+    // Possiamo quindi ricalcolare:
+    //
+    // - Saldo Disponibile dei Conti
+    // - Dashboard
+    // - tutti gli altri valori centralizzati.
+    //
+    // ========================================================
+
+    ricalcolaFinanze(
+        libreriaSaldo,
+        libreriaTransazioni,
+        libreriaConti,
+        libreriaDashboard,
+        libreriaSpeseFisse,
+        libreriaSalvadanaio
+    );
+
+
+    return true;
+
+} // fine ricalcolaSalvadanai()
