@@ -1,7 +1,7 @@
 // ============================================================
 // FINANZE
 // MOTORE CENTRALE - RICALCOLO FINANZE
-// VERSIONE: 0.8.4 PRO
+// VERSIONE: 0.8.5 PRO - BRIDGE ENTRATE VERIFICATE
 // ============================================================
 //
 // LIBRERIA:
@@ -38,6 +38,16 @@
 // - Dashboard e widget possono leggere direttamente
 //   i valori centralizzati senza ricalcolarli.
 //
+// NOVITÀ 0.8.5 - MIGRAZIONE SICURA ENTRATE VERIFICATE:
+//
+// - Il vecchio Booleano "Entrate Verificate" resta temporaneamente
+//   la fonte operativa durante la migrazione.
+// - Il nuovo campo testo sola lettura "Entrate Verificate V2"
+//   viene mantenuto sincronizzato dal motore con valori SI / NO.
+// - Nessuna logica di riconciliazione viene modificata.
+// - Dopo la migrazione di trigger/azioni, il Booleano legacy
+//   potrà essere rimosso in una versione successiva.
+//
 // LOGICA RICONCILIAZIONE:
 //
 // - Primo Check = baseline automatica.
@@ -54,7 +64,7 @@
 
 function versioneMotoreFinanze() {
 
-    return "0.8.4 PRO";
+    return "0.8.5 PRO";
 }
 
 
@@ -359,6 +369,54 @@ function ricalcolaFinanze(
             Number(valore) *
             100
         ) / 100;
+    }
+
+
+    // ========================================================
+    // 4A. BRIDGE ENTRATE VERIFICATE - MIGRAZIONE 0.8.5
+    // ========================================================
+    //
+    // Durante la migrazione il Booleano legacy resta la fonte
+    // operativa, così trigger e azioni esistenti continuano a
+    // funzionare senza cambiare comportamento.
+    //
+    // Ogni scrittura viene duplicata anche nel nuovo campo
+    // Testo sola lettura "Entrate Verificate V2" (SI / NO).
+    // ========================================================
+
+    function leggiEntrateVerificate(
+        check
+    ) {
+
+        return (
+            check.field(
+                "Entrate Verificate"
+            ) === true
+        );
+    }
+
+
+    function scriviEntrateVerificate(
+        check,
+        valore
+    ) {
+
+        var verificato =
+            valore === true;
+
+
+        check.set(
+            "Entrate Verificate",
+            verificato
+        );
+
+
+        check.set(
+            "Entrate Verificate V2",
+            verificato
+                ? "SI"
+                : "NO"
+        );
     }
 
 
@@ -1167,8 +1225,8 @@ function ricalcolaFinanze(
                 checkContoOrdinati[0];
 
 
-            primoCheck.set(
-                "Entrate Verificate",
+            scriviEntrateVerificate(
+                primoCheck,
                 true
             );
 
@@ -1578,9 +1636,9 @@ function ricalcolaFinanze(
             // ================================================
 
             var precedenteVerificato =
-                checkPrecedente.field(
-                    "Entrate Verificate"
-                ) === true;
+                leggiEntrateVerificate(
+                    checkPrecedente
+                );
 
             var statoPrecedente =
                 checkPrecedente.field(
@@ -1604,8 +1662,8 @@ function ricalcolaFinanze(
                 }
 
 
-                checkCorrente.set(
-                    "Entrate Verificate",
+                scriviEntrateVerificate(
+                    checkCorrente,
                     false
                 );
 
@@ -1624,9 +1682,9 @@ function ricalcolaFinanze(
 
 
             var entrateVerificate =
-                checkCorrente.field(
-                    "Entrate Verificate"
-                ) === true;
+                leggiEntrateVerificate(
+                    checkCorrente
+                );
 
 
             if (
@@ -1822,8 +1880,8 @@ function ricalcolaFinanze(
                 }
 
 
-                checkCorrente.set(
-                    "Entrate Verificate",
+                scriviEntrateVerificate(
+                    checkCorrente,
                     true
                 );
 
@@ -1874,8 +1932,8 @@ function ricalcolaFinanze(
                 }
 
 
-                checkCorrente.set(
-                    "Entrate Verificate",
+                scriviEntrateVerificate(
+                    checkCorrente,
                     false
                 );
 
@@ -1924,8 +1982,8 @@ function ricalcolaFinanze(
                 }
 
 
-                checkCorrente.set(
-                    "Entrate Verificate",
+                scriviEntrateVerificate(
+                    checkCorrente,
                     true
                 );
 
@@ -1946,9 +2004,9 @@ function ricalcolaFinanze(
             // ================================================
 
             if (
-                checkCorrente.field(
-                    "Entrate Verificate"
-                ) === true &&
+                leggiEntrateVerificate(
+                    checkCorrente
+                ) &&
                 checkCorrente.field(
                     "Stato di Riconciliazione"
                 ) == "OK"
@@ -2398,9 +2456,9 @@ function ricalcolaFinanze(
     }
 
 
-       // ========================================================
+    // ========================================================
     // 10. STATO CHECK PER DASHBOARD
-    // VERSIONE 0.8.4
+    // VERSIONE 0.8.5
     // ========================================================
     //
     // DISTINZIONE FONDAMENTALE:
@@ -2562,20 +2620,6 @@ function ricalcolaFinanze(
         // ====================================================
         // 10C. CHECK CRONOLOGICAMENTE PIÙ RECENTE
         // ====================================================
-        //
-        // Questo Check serve per determinare lo STATO
-        // corrente del conto.
-        //
-        // Può essere:
-        //
-        // OK
-        // VERIFICA ENTRATE
-        // ENTRATE DA REGISTRARE
-        // CHECK PRECEDENTE DA CHIUDERE
-        // ecc.
-        //
-        // Non è necessariamente un Check confermato.
-        // ====================================================
 
         var ultimoCheckDashboardConto =
             checkDashboardConto[
@@ -2590,28 +2634,13 @@ function ricalcolaFinanze(
 
 
         var entrateVerificateUltimoCheck =
-            ultimoCheckDashboardConto.field(
-                "Entrate Verificate"
+            leggiEntrateVerificate(
+                ultimoCheckDashboardConto
             );
 
 
         // ====================================================
         // 10D. ULTIMO CHECK CONFERMATO DEL CONTO
-        // ====================================================
-        //
-        // Cerchiamo a ritroso il Check più recente
-        // realmente chiuso e verificato.
-        //
-        // È valido SOLO se:
-        //
-        // Entrate Verificate === true
-        //
-        // E
-        //
-        // Stato di Riconciliazione == "OK"
-        //
-        // Un Check ancora aperto/non verificato NON deve
-        // diventare il riferimento "Ultimo Check Saldo".
         // ====================================================
 
         var ultimoCheckConfermatoConto =
@@ -2630,9 +2659,9 @@ function ricalcolaFinanze(
 
 
             if (
-                candidatoCheck.field(
-                    "Entrate Verificate"
-                ) === true &&
+                leggiEntrateVerificate(
+                    candidatoCheck
+                ) &&
                 candidatoCheck.field(
                     "Stato di Riconciliazione"
                 ) == "OK"
@@ -2648,20 +2677,6 @@ function ricalcolaFinanze(
 
         // ====================================================
         // 10E. DATA CHECK CONFERMATO
-        // ====================================================
-        //
-        // La Dashboard complessiva deve rappresentare
-        // quanto è "vecchia" la verifica dei conti.
-        //
-        // Con più conti attivi prendiamo il Check confermato
-        // più vecchio tra quelli disponibili:
-        //
-        // è il conto la cui verifica è meno recente.
-        //
-        // NOTA:
-        // questa regola riguarda soltanto la DATA mostrata.
-        // Lo stato continua invece a dipendere dal Check
-        // cronologicamente più recente di ciascun conto.
         // ====================================================
 
         if (
@@ -2703,14 +2718,6 @@ function ricalcolaFinanze(
 
         // ====================================================
         // 10F. STATO DEL CHECK PIÙ RECENTE
-        // ====================================================
-        //
-        // ATTENZIONE:
-        //
-        // Qui NON utilizziamo ultimoCheckConfermatoConto.
-        //
-        // Dobbiamo sapere se esiste un nuovo Check che
-        // richiede intervento.
         // ====================================================
 
         if (
@@ -2782,8 +2789,8 @@ function ricalcolaFinanze(
         prioritaStatoDashboard =
             50;
     }
-    
-        
+
+
     // ========================================================
     // 11. DASHBOARD LEGACY
     // ========================================================
@@ -3045,24 +3052,6 @@ function ricalcolaFinanze(
 
         // ====================================================
         // 11C. TOTALI CENTRALIZZATI DAI CONTI
-        // ====================================================
-        //
-        // IMPORTANTE:
-        //
-        // Non ricalcoliamo il disponibile.
-        //
-        // Sommiamo semplicemente:
-        //
-        //      Conti.Saldo Attuale
-        //      Conti.Saldo Disponibile
-        //
-        // Questo garantisce che:
-        //
-        // CARD CONTO
-        // HEADER CONTI
-        // DASHBOARD
-        //
-        // leggano gli stessi valori.
         // ====================================================
 
         var saldoAttualeDashboard =
@@ -3703,6 +3692,8 @@ function ricalcolaFinanze(
 
 
 } // fine ricalcolaFinanze()
+
+
 // ============================================================
 // FINANZE
 // MOTORE CENTRALE - SALVADANAI
