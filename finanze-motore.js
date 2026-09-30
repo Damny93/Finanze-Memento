@@ -1,7 +1,7 @@
 // ============================================================
 // FINANZE
 // MOTORE CENTRALE - RICALCOLO FINANZE
-// VERSIONE: 0.8.2 PRO
+// VERSIONE: 0.8.4 PRO
 // ============================================================
 //
 // LIBRERIA:
@@ -16,7 +16,7 @@
 // BASE:
 // 0.8.1 PRO - VERIFICATO
 //
-// NOVITÀ 0.8.3:
+// NOVITÀ 0.8.4:
 //
 // - CENTRALIZZAZIONE SALDI PER CONTO.
 //
@@ -54,7 +54,7 @@
 
 function versioneMotoreFinanze() {
 
-    return "0.8.3 PRO";
+    return "0.8.4 PRO";
 }
 
 
