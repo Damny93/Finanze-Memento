@@ -2398,8 +2398,41 @@ function ricalcolaFinanze(
     }
 
 
-    // ========================================================
+       // ========================================================
     // 10. STATO CHECK PER DASHBOARD
+    // VERSIONE 0.8.4
+    // ========================================================
+    //
+    // DISTINZIONE FONDAMENTALE:
+    //
+    // ultimoCheckConto
+    // = Check cronologicamente più recente.
+    //   Serve per determinare lo STATO corrente del conto.
+    //
+    // ultimoCheckConfermatoConto
+    // = Check più recente con:
+    //
+    //      Entrate Verificate === true
+    //      Stato di Riconciliazione == "OK"
+    //
+    //   Serve come ultimo riferimento realmente verificato.
+    //
+    // IMPORTANTE:
+    //
+    // Un nuovo Check ancora da verificare NON deve
+    // sostituire l'ultimo Check confermato.
+    //
+    // Esempio:
+    //
+    // 27/09 -> Check OK
+    // 30/09 -> VERIFICA ENTRATE
+    //
+    // Stato corrente:
+    //      VERIFICA ENTRATE
+    //
+    // Ultimo Check confermato:
+    //      27/09
+    //
     // ========================================================
 
     var momentoUltimoCheckDashboard =
@@ -2415,6 +2448,9 @@ function ricalcolaFinanze(
         0;
 
     var numeroContiConCheck =
+        0;
+
+    var numeroContiConCheckConfermato =
         0;
 
 
@@ -2447,6 +2483,10 @@ function ricalcolaFinanze(
             tuttiConti[dc];
 
 
+        // ----------------------------------------------------
+        // Consideriamo soltanto i conti attivi
+        // ----------------------------------------------------
+
         if (
             !contoCheckDashboard.field(
                 "Attivo"
@@ -2463,6 +2503,10 @@ function ricalcolaFinanze(
         var idContoDashboard =
             contoCheckDashboard.id;
 
+
+        // ====================================================
+        // 10A. CHECK DEL CONTO
+        // ====================================================
 
         var checkDashboardConto =
             [];
@@ -2495,6 +2539,10 @@ function ricalcolaFinanze(
         );
 
 
+        // ====================================================
+        // 10B. NESSUN CHECK
+        // ====================================================
+
         if (
             checkDashboardConto.length == 0
         ) {
@@ -2507,333 +2555,234 @@ function ricalcolaFinanze(
             continue;
         }
 
-    // ========================================================
-// 10. STATO CHECK PER DASHBOARD
-// VERSIONE 0.8.4
-// ========================================================
-//
-// DISTINZIONE FONDAMENTALE:
-//
-// ultimoCheckConto
-// = Check cronologicamente più recente.
-//   Serve per determinare lo STATO corrente.
-//
-// ultimoCheckConfermatoConto
-// = ultimo Check con:
-//      Entrate Verificate === true
-//      Stato di Riconciliazione == "OK"
-//   Serve come ultimo riferimento realmente verificato.
-//
-// "Ultimo Check Saldo" della Dashboard deve quindi
-// rappresentare un Check CONFERMATO, non semplicemente
-// l'ultimo Check inserito.
-//
-// ========================================================
 
-var momentoUltimoCheckDashboard =
-    null;
-
-var statoCheckDashboard =
-    "OK";
-
-var prioritaStatoDashboard =
-    0;
-
-var numeroContiAttivi =
-    0;
-
-var numeroContiConCheck =
-    0;
-
-var numeroContiConCheckConfermato =
-    0;
+        numeroContiConCheck++;
 
 
-function impostaStatoDashboard(
-    stato,
-    priorita
-) {
+        // ====================================================
+        // 10C. CHECK CRONOLOGICAMENTE PIÙ RECENTE
+        // ====================================================
+        //
+        // Questo Check serve per determinare lo STATO
+        // corrente del conto.
+        //
+        // Può essere:
+        //
+        // OK
+        // VERIFICA ENTRATE
+        // ENTRATE DA REGISTRARE
+        // CHECK PRECEDENTE DA CHIUDERE
+        // ecc.
+        //
+        // Non è necessariamente un Check confermato.
+        // ====================================================
 
-    if (
-        priorita >
-        prioritaStatoDashboard
-    ) {
-
-        statoCheckDashboard =
-            stato;
-
-        prioritaStatoDashboard =
-            priorita;
-    }
-}
-
-
-for (
-    var dc = 0;
-    dc < tuttiConti.length;
-    dc++
-) {
-
-    var contoCheckDashboard =
-        tuttiConti[dc];
+        var ultimoCheckDashboardConto =
+            checkDashboardConto[
+                checkDashboardConto.length - 1
+            ];
 
 
-    if (
-        !contoCheckDashboard.field(
-            "Attivo"
-        )
-    ) {
-
-        continue;
-    }
-
-
-    numeroContiAttivi++;
-
-
-    var idContoDashboard =
-        contoCheckDashboard.id;
-
-
-    var checkDashboardConto =
-        [];
-
-
-    for (
-        var dck = 0;
-        dck < tuttiCheck.length;
-        dck++
-    ) {
-
-        if (
-            contieneConto(
-                tuttiCheck[dck].field(
-                    "Conto"
-                ),
-                idContoDashboard
-            )
-        ) {
-
-            checkDashboardConto.push(
-                tuttiCheck[dck]
-            );
-        }
-    }
-
-
-    checkDashboardConto.sort(
-        ordinaCronologicamente
-    );
-
-
-    // ====================================================
-    // 10A. NESSUN CHECK
-    // ====================================================
-
-    if (
-        checkDashboardConto.length == 0
-    ) {
-
-        impostaStatoDashboard(
-            "CHECK MANCANTE",
-            50
-        );
-
-        continue;
-    }
-
-
-    numeroContiConCheck++;
-
-
-    // ====================================================
-    // 10B. ULTIMO CHECK CRONOLOGICO
-    // ====================================================
-    //
-    // Serve esclusivamente per capire se il conto
-    // necessita di intervento.
-    // ====================================================
-
-    var ultimoCheckDashboardConto =
-        checkDashboardConto[
-            checkDashboardConto.length - 1
-        ];
-
-
-    var statoUltimoCheck =
-        ultimoCheckDashboardConto.field(
-            "Stato di Riconciliazione"
-        );
-
-
-    var entrateVerificateUltimoCheck =
-        ultimoCheckDashboardConto.field(
-            "Entrate Verificate"
-        );
-
-
-    // ====================================================
-    // 10C. ULTIMO CHECK CONFERMATO
-    // ====================================================
-    //
-    // Cerchiamo a ritroso il Check più recente che sia:
-    //
-    // Entrate Verificate = true
-    // Stato di Riconciliazione = OK
-    //
-    // Un Check ancora da verificare NON sostituisce
-    // l'ultimo Check confermato.
-    // ====================================================
-
-    var ultimoCheckConfermatoConto =
-        null;
-
-
-    for (
-        var ucc =
-            checkDashboardConto.length - 1;
-        ucc >= 0;
-        ucc--
-    ) {
-
-        var candidatoCheck =
-            checkDashboardConto[ucc];
-
-
-        if (
-            candidatoCheck.field(
-                "Entrate Verificate"
-            ) === true &&
-            candidatoCheck.field(
+        var statoUltimoCheck =
+            ultimoCheckDashboardConto.field(
                 "Stato di Riconciliazione"
-            ) == "OK"
-        ) {
-
-            ultimoCheckConfermatoConto =
-                candidatoCheck;
-
-            break;
-        }
-    }
-
-
-    if (
-        ultimoCheckConfermatoConto
-    ) {
-
-        numeroContiConCheckConfermato++;
-
-
-        var dataUltimoCheckConfermato =
-            ultimoCheckConfermatoConto.field(
-                "Data e Ora"
             );
 
 
-        if (
-            dataUltimoCheckConfermato
+        var entrateVerificateUltimoCheck =
+            ultimoCheckDashboardConto.field(
+                "Entrate Verificate"
+            );
+
+
+        // ====================================================
+        // 10D. ULTIMO CHECK CONFERMATO DEL CONTO
+        // ====================================================
+        //
+        // Cerchiamo a ritroso il Check più recente
+        // realmente chiuso e verificato.
+        //
+        // È valido SOLO se:
+        //
+        // Entrate Verificate === true
+        //
+        // E
+        //
+        // Stato di Riconciliazione == "OK"
+        //
+        // Un Check ancora aperto/non verificato NON deve
+        // diventare il riferimento "Ultimo Check Saldo".
+        // ====================================================
+
+        var ultimoCheckConfermatoConto =
+            null;
+
+
+        for (
+            var ucc =
+                checkDashboardConto.length - 1;
+            ucc >= 0;
+            ucc--
         ) {
 
-            var momentoCheckConfermato =
-                moment(
-                    dataUltimoCheckConfermato
+            var candidatoCheck =
+                checkDashboardConto[ucc];
+
+
+            if (
+                candidatoCheck.field(
+                    "Entrate Verificate"
+                ) === true &&
+                candidatoCheck.field(
+                    "Stato di Riconciliazione"
+                ) == "OK"
+            ) {
+
+                ultimoCheckConfermatoConto =
+                    candidatoCheck;
+
+                break;
+            }
+        }
+
+
+        // ====================================================
+        // 10E. DATA CHECK CONFERMATO
+        // ====================================================
+        //
+        // La Dashboard complessiva deve rappresentare
+        // quanto è "vecchia" la verifica dei conti.
+        //
+        // Con più conti attivi prendiamo il Check confermato
+        // più vecchio tra quelli disponibili:
+        //
+        // è il conto la cui verifica è meno recente.
+        //
+        // NOTA:
+        // questa regola riguarda soltanto la DATA mostrata.
+        // Lo stato continua invece a dipendere dal Check
+        // cronologicamente più recente di ciascun conto.
+        // ====================================================
+
+        if (
+            ultimoCheckConfermatoConto
+        ) {
+
+            numeroContiConCheckConfermato++;
+
+
+            var dataUltimoCheckConfermato =
+                ultimoCheckConfermatoConto.field(
+                    "Data e Ora"
                 );
 
 
-            // Per la Dashboard complessiva manteniamo
-            // il Check confermato PIÙ VECCHIO tra i
-            // conti attivi.
-            //
-            // In questo modo l'età mostrata rappresenta
-            // il conto che necessita prima di un nuovo Check.
-
             if (
-                !momentoUltimoCheckDashboard ||
-                momentoCheckConfermato.isBefore(
-                    momentoUltimoCheckDashboard
-                )
+                dataUltimoCheckConfermato
             ) {
 
-                momentoUltimoCheckDashboard =
-                    momentoCheckConfermato;
+                var momentoCheckConfermato =
+                    moment(
+                        dataUltimoCheckConfermato
+                    );
+
+
+                if (
+                    !momentoUltimoCheckDashboard ||
+                    momentoCheckConfermato.isBefore(
+                        momentoUltimoCheckDashboard
+                    )
+                ) {
+
+                    momentoUltimoCheckDashboard =
+                        momentoCheckConfermato;
+                }
             }
+        }
+
+
+        // ====================================================
+        // 10F. STATO DEL CHECK PIÙ RECENTE
+        // ====================================================
+        //
+        // ATTENZIONE:
+        //
+        // Qui NON utilizziamo ultimoCheckConfermatoConto.
+        //
+        // Dobbiamo sapere se esiste un nuovo Check che
+        // richiede intervento.
+        // ====================================================
+
+        if (
+            statoUltimoCheck ==
+            "CHECK PRECEDENTE DA CHIUDERE"
+        ) {
+
+            impostaStatoDashboard(
+                "CHECK PRECEDENTE DA CHIUDERE",
+                40
+            );
+
+        } else if (
+            statoUltimoCheck ==
+            "ENTRATE DA REGISTRARE"
+        ) {
+
+            impostaStatoDashboard(
+                "ENTRATE DA REGISTRARE",
+                30
+            );
+
+        } else if (
+            statoUltimoCheck ==
+                "VERIFICA ENTRATE" ||
+            entrateVerificateUltimoCheck !==
+                true
+        ) {
+
+            impostaStatoDashboard(
+                "VERIFICA ENTRATE",
+                20
+            );
+
+        } else if (
+            statoUltimoCheck !=
+            "OK"
+        ) {
+
+            impostaStatoDashboard(
+                "ERRORE RICONCILIAZIONE",
+                35
+            );
         }
     }
 
 
-    // ====================================================
-    // 10D. STATO DEL CHECK PIÙ RECENTE
-    // ====================================================
+    // ========================================================
+    // 10G. STATO GLOBALE
+    // ========================================================
 
     if (
-        statoUltimoCheck ==
-        "CHECK PRECEDENTE DA CHIUDERE"
+        numeroContiAttivi == 0
     ) {
 
-        impostaStatoDashboard(
-            "CHECK PRECEDENTE DA CHIUDERE",
-            40
-        );
+        statoCheckDashboard =
+            "NESSUN CONTO ATTIVO";
+
+        prioritaStatoDashboard =
+            60;
 
     } else if (
-        statoUltimoCheck ==
-        "ENTRATE DA REGISTRARE"
+        numeroContiConCheck == 0
     ) {
 
-        impostaStatoDashboard(
-            "ENTRATE DA REGISTRARE",
-            30
-        );
+        statoCheckDashboard =
+            "NESSUN CHECK";
 
-    } else if (
-        statoUltimoCheck ==
-            "VERIFICA ENTRATE" ||
-        entrateVerificateUltimoCheck !==
-            true
-    ) {
-
-        impostaStatoDashboard(
-            "VERIFICA ENTRATE",
-            20
-        );
-
-    } else if (
-        statoUltimoCheck !=
-        "OK"
-    ) {
-
-        impostaStatoDashboard(
-            "ERRORE RICONCILIAZIONE",
-            35
-        );
+        prioritaStatoDashboard =
+            50;
     }
-}
-
-
-// ========================================================
-// 10E. STATO GLOBALE
-// ========================================================
-
-if (
-    numeroContiAttivi == 0
-) {
-
-    statoCheckDashboard =
-        "NESSUN CONTO ATTIVO";
-
-    prioritaStatoDashboard =
-        60;
-
-} else if (
-    numeroContiConCheck == 0
-) {
-
-    statoCheckDashboard =
-        "NESSUN CHECK";
-
-    prioritaStatoDashboard =
-        50;
-}
+    
         
     // ========================================================
     // 11. DASHBOARD LEGACY
