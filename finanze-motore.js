@@ -371,53 +371,62 @@ function ricalcolaFinanze(
         ) / 100;
     }
 
+// ========================================================
+// 4A. ENTRATE VERIFICATE - CAMPO TESTO DEFINITIVO
+// VERSIONE: 0.8.6
+// ========================================================
+//
+// FONTE UNICA TECNICA:
+//
+//      Entrate Verificate
+//
+// Tipo:
+//      Testo
+//
+// Valori:
+//      "SI"
+//      "NO"
+//
+// Il vecchio Booleano:
+//
+//      Entrate Verificate OUT
+//
+// NON viene più letto né scritto dal motore.
+// ========================================================
 
-    // ========================================================
-    // 4A. BRIDGE ENTRATE VERIFICATE - MIGRAZIONE 0.8.5
-    // ========================================================
-    //
-    // Durante la migrazione il Booleano legacy resta la fonte
-    // operativa, così trigger e azioni esistenti continuano a
-    // funzionare senza cambiare comportamento.
-    //
-    // Ogni scrittura viene duplicata anche nel nuovo campo
-    // Testo sola lettura "Entrate Verificate V2" (SI / NO).
-    // ========================================================
 
-    function leggiEntrateVerificate(
-        check
-    ) {
+function leggiEntrateVerificate(
+    check
+) {
 
-        return (
+    var valore =
+        String(
             check.field(
                 "Entrate Verificate"
-            ) === true
-        );
-    }
+            ) || ""
+        )
+        .trim()
+        .toUpperCase();
 
 
-    function scriviEntrateVerificate(
-        check,
-        valore
-    ) {
-
-        var verificato =
-            valore === true;
+    return (
+        valore == "SI"
+    );
+}
 
 
-        check.set(
-            "Entrate Verificate",
-            verificato
-        );
+function scriviEntrateVerificate(
+    check,
+    valore
+) {
 
-
-        check.set(
-            "Entrate Verificate V2",
-            verificato
-                ? "SI"
-                : "NO"
-        );
-    }
+    check.set(
+        "Entrate Verificate",
+        valore === true
+            ? "SI"
+            : "NO"
+    );
+}
 
 
     function dataNelMeseCorrente(
