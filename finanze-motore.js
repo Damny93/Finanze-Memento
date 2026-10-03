@@ -1,7 +1,7 @@
 // ============================================================
 // FINANZE
 // MOTORE CENTRALE - RICALCOLO FINANZE
-// VERSIONE: 0.8.5 PRO - BRIDGE ENTRATE VERIFICATE
+// VERSIONE: 0.8.7 PRO - PROGRESSIVO MOVIMENTI SALVADANAIO
 // ============================================================
 //
 // LIBRERIA:
@@ -10,11 +10,16 @@
 // TIPO:
 // Condiviso
 //
-// FUNZIONE PUBBLICA:
-// ricalcolaFinanze()
+// FUNZIONI PUBBLICHE:
+//
+//      ricalcolaFinanze()
+//      ricalcolaSalvadanai()
 //
 // BASE:
+//
 // 0.8.1 PRO - VERIFICATO
+//
+// ============================================================
 //
 // NOVITÀ 0.8.4:
 //
@@ -33,27 +38,60 @@
 //      - Accantonamenti ancora previsti
 //
 // - Funziona anche sui conti senza Check:
+//
 //      Saldo Iniziale + Transazioni.
 //
 // - Dashboard e widget possono leggere direttamente
 //   i valori centralizzati senza ricalcolarli.
 //
-// NOVITÀ 0.8.5 - MIGRAZIONE SICURA ENTRATE VERIFICATE:
+// ============================================================
 //
-// - Il vecchio Booleano "Entrate Verificate" resta temporaneamente
-//   la fonte operativa durante la migrazione.
-// - Il nuovo campo testo sola lettura "Entrate Verificate V2"
-//   viene mantenuto sincronizzato dal motore con valori SI / NO.
-// - Nessuna logica di riconciliazione viene modificata.
-// - Dopo la migrazione di trigger/azioni, il Booleano legacy
-//   potrà essere rimosso in una versione successiva.
+// NOVITÀ 0.8.6:
+//
+// - Entrate Verificate è ora definitivamente un campo Testo.
+//
+// Valori:
+//
+//      SI
+//      NO
+//
+// - Il vecchio Booleano legacy non viene più letto
+//   né scritto dal motore.
+//
+// ============================================================
+//
+// NOVITÀ 0.8.7:
+//
+// [■] Movimenti Salvadanaio riceve:
+//
+//      Saldo Progressivo
+//      Saldo Progressivo Visualizzato
+//
+// Il progressivo viene calcolato separatamente per
+// ogni singolo Salvadanaio:
+//
+//      Importo Iniziale
+//      + Accantonamento
+//      - Anticipo
+//      + Rimborso
+//
+// I movimenti vengono ordinati per:
+//
+//      Data e Ora
+//      ID come spareggio
+//
+// Formato visualizzato:
+//
+//      [ ⛃ 1.234,56 € ]
+//
+// ============================================================
 //
 // LOGICA RICONCILIAZIONE:
 //
 // - Primo Check = baseline automatica.
 // - Check successivi = VERIFICA ENTRATE.
 // - Nessuna "Altra Spesa" viene creata finché
-//   "Entrate Verificate" non è true.
+//   "Entrate Verificate" non è SI.
 // - Differenza positiva riapre il Check.
 // - Quando un Check viene chiuso in OK, tutte le
 //   transazioni dell'intervallo vengono collegate
@@ -64,7 +102,7 @@
 
 function versioneMotoreFinanze() {
 
-    return "0.8.5 PRO";
+    return "0.8.7 PRO";
 }
 
 
@@ -92,7 +130,7 @@ function ricalcolaFinanze(
     ) {
 
         message(
-            "ERRORE v0.8.2: una o più librerie FINANZE non sono accessibili."
+            "ERRORE v0.8.7: una o più librerie FINANZE non sono accessibili."
         );
 
         return;
@@ -371,62 +409,57 @@ function ricalcolaFinanze(
         ) / 100;
     }
 
-// ========================================================
-// 4A. ENTRATE VERIFICATE - CAMPO TESTO DEFINITIVO
-// VERSIONE: 0.8.6
-// ========================================================
-//
-// FONTE UNICA TECNICA:
-//
-//      Entrate Verificate
-//
-// Tipo:
-//      Testo
-//
-// Valori:
-//      "SI"
-//      "NO"
-//
-// Il vecchio Booleano:
-//
-//      Entrate Verificate OUT
-//
-// NON viene più letto né scritto dal motore.
-// ========================================================
+
+    // ========================================================
+    // 4A. ENTRATE VERIFICATE - CAMPO TESTO DEFINITIVO
+    // VERSIONE: 0.8.6+
+    // ========================================================
+    //
+    // FONTE UNICA TECNICA:
+    //
+    //      Entrate Verificate
+    //
+    // Tipo:
+    //      Testo
+    //
+    // Valori:
+    //      SI
+    //      NO
+    //
+    // ========================================================
+
+    function leggiEntrateVerificate(
+        check
+    ) {
+
+        var valore =
+            String(
+                check.field(
+                    "Entrate Verificate"
+                ) || ""
+            )
+            .trim()
+            .toUpperCase();
 
 
-function leggiEntrateVerificate(
-    check
-) {
-
-    var valore =
-        String(
-            check.field(
-                "Entrate Verificate"
-            ) || ""
-        )
-        .trim()
-        .toUpperCase();
+        return (
+            valore == "SI"
+        );
+    }
 
 
-    return (
-        valore == "SI"
-    );
-}
+    function scriviEntrateVerificate(
+        check,
+        valore
+    ) {
 
-
-function scriviEntrateVerificate(
-    check,
-    valore
-) {
-
-    check.set(
-        "Entrate Verificate",
-        valore === true
-            ? "SI"
-            : "NO"
-    );
-}
+        check.set(
+            "Entrate Verificate",
+            valore === true
+                ? "SI"
+                : "NO"
+        );
+    }
 
 
     function dataNelMeseCorrente(
@@ -518,7 +551,7 @@ function scriviEntrateVerificate(
 
 
     // ========================================================
-    // 4A. SALVADANAIO DEL SINGOLO CONTO
+    // 4B. SALVADANAIO DEL SINGOLO CONTO
     // ========================================================
 
     function calcolaSalvadanaioConto(
@@ -641,7 +674,7 @@ function scriviEntrateVerificate(
 
 
     // ========================================================
-    // 4B. SPESE FISSE RESIDUE DEL SINGOLO CONTO
+    // 4C. SPESE FISSE RESIDUE DEL SINGOLO CONTO
     // ========================================================
 
     function calcolaSpeseResidueConto(
@@ -729,7 +762,7 @@ function scriviEntrateVerificate(
 
 
     // ========================================================
-    // 4C. ACCANTONAMENTI ANCORA PREVISTI DEL CONTO
+    // 4D. ACCANTONAMENTI ANCORA PREVISTI DEL CONTO
     // ========================================================
 
     function calcolaAccantonamentiPrevistiConto(
@@ -764,8 +797,6 @@ function scriviEntrateVerificate(
             }
 
 
-            // Il salvadanaio deve appartenere
-            // al conto in analisi.
             if (
                 !contieneConto(
                     salvadanaio.field(
@@ -846,8 +877,6 @@ function scriviEntrateVerificate(
                 }
 
 
-                // Anche l'entrata di riferimento
-                // deve appartenere allo stesso conto.
                 if (
                     !contieneConto(
                         entrata.field(
@@ -941,7 +970,7 @@ function scriviEntrateVerificate(
 
 
     // ========================================================
-    // 4D. SALDO DISPONIBILE CENTRALIZZATO
+    // 4E. SALDO DISPONIBILE CENTRALIZZATO
     // ========================================================
 
     function calcolaSaldoDisponibileConto(
@@ -987,7 +1016,7 @@ function scriviEntrateVerificate(
 
 
     // ========================================================
-    // 4E. NORMALIZZAZIONE CHECK RICONCILIAZIONE
+    // 4F. NORMALIZZAZIONE CHECK RICONCILIAZIONE
     // ========================================================
 
     function normalizzaCheckRiconciliazione(
@@ -2392,9 +2421,6 @@ function scriviEntrateVerificate(
         }
 
 
-        // Fallback finale:
-        // anche senza Data Saldo Iniziale e senza Check
-        // mostriamo almeno il Saldo Iniziale.
         if (
             !isFinite(
                 saldoCorrenteConto
@@ -2431,17 +2457,6 @@ function scriviEntrateVerificate(
         // ====================================================
         // 9. SALDO DISPONIBILE CENTRALIZZATO
         // ====================================================
-        //
-        // Questa è la nuova fonte unica per Dashboard/Card.
-        //
-        // Saldo Disponibile =
-        //
-        // Saldo Attuale
-        // - Salvadanaio già accantonato
-        // - Spese ancora da sostenere questo mese
-        // - Accantonamenti ancora previsti questo mese
-        //
-        // ====================================================
 
         var saldoDisponibileConto =
             calcolaSaldoDisponibileConto(
@@ -2467,39 +2482,6 @@ function scriviEntrateVerificate(
 
     // ========================================================
     // 10. STATO CHECK PER DASHBOARD
-    // VERSIONE 0.8.5
-    // ========================================================
-    //
-    // DISTINZIONE FONDAMENTALE:
-    //
-    // ultimoCheckConto
-    // = Check cronologicamente più recente.
-    //   Serve per determinare lo STATO corrente del conto.
-    //
-    // ultimoCheckConfermatoConto
-    // = Check più recente con:
-    //
-    //      Entrate Verificate === true
-    //      Stato di Riconciliazione == "OK"
-    //
-    //   Serve come ultimo riferimento realmente verificato.
-    //
-    // IMPORTANTE:
-    //
-    // Un nuovo Check ancora da verificare NON deve
-    // sostituire l'ultimo Check confermato.
-    //
-    // Esempio:
-    //
-    // 27/09 -> Check OK
-    // 30/09 -> VERIFICA ENTRATE
-    //
-    // Stato corrente:
-    //      VERIFICA ENTRATE
-    //
-    // Ultimo Check confermato:
-    //      27/09
-    //
     // ========================================================
 
     var momentoUltimoCheckDashboard =
@@ -2549,10 +2531,6 @@ function scriviEntrateVerificate(
         var contoCheckDashboard =
             tuttiConti[dc];
 
-
-        // ----------------------------------------------------
-        // Consideriamo soltanto i conti attivi
-        // ----------------------------------------------------
 
         if (
             !contoCheckDashboard.field(
@@ -2627,7 +2605,7 @@ function scriviEntrateVerificate(
 
 
         // ====================================================
-        // 10C. CHECK CRONOLOGICAMENTE PIÙ RECENTE
+        // 10C. CHECK PIÙ RECENTE
         // ====================================================
 
         var ultimoCheckDashboardConto =
@@ -2649,7 +2627,7 @@ function scriviEntrateVerificate(
 
 
         // ====================================================
-        // 10D. ULTIMO CHECK CONFERMATO DEL CONTO
+        // 10D. ULTIMO CHECK CONFERMATO
         // ====================================================
 
         var ultimoCheckConfermatoConto =
@@ -3706,15 +3684,14 @@ function scriviEntrateVerificate(
 // ============================================================
 // FINANZE
 // MOTORE CENTRALE - SALVADANAI
-// VERSIONE MOTORE: 0.8.3 PRO
+// VERSIONE MOTORE: 0.8.7 PRO
 // ============================================================
 //
 // FUNZIONE PUBBLICA:
-// ricalcolaSalvadanai()
 //
-// SCOPO:
+//      ricalcolaSalvadanai()
 //
-// Fonte unica di verità per il ricalcolo di:
+// FONTE UNICA DI VERITÀ:
 //
 // Importo Salvadanaio
 // = Importo Iniziale + Accantonamenti
@@ -3725,9 +3702,27 @@ function scriviEntrateVerificate(
 // Importo Effettivo
 // = Importo Salvadanaio - Anticipato
 //
-// Al termine richiama automaticamente:
+// SALDO PROGRESSIVO MOVIMENTI:
 //
-// ricalcolaFinanze()
+// Per ciascun singolo Salvadanaio:
+//
+//      Importo Iniziale
+//      + Accantonamenti
+//      - Anticipi
+//      + Rimborsi
+//
+// Ogni record di [■] Movimenti Salvadanaio riceve:
+//
+//      Saldo Progressivo
+//      Saldo Progressivo Visualizzato
+//
+// Formato:
+//
+//      [ ⛃ 1.234,56 € ]
+//
+// Al termine:
+//
+//      ricalcolaFinanze()
 //
 // ============================================================
 
@@ -3763,9 +3758,6 @@ function ricalcolaSalvadanai() {
         }
 
 
-        // Protezione anche nel caso in cui Memento
-        // restituisca una singola relazione.
-
         if (
             typeof relazione.length ==
             "undefined"
@@ -3794,6 +3786,173 @@ function ricalcolaSalvadanai() {
 
 
         return false;
+    }
+
+
+    function tempoMovimentoSalvadanaio(
+        movimento
+    ) {
+
+        var data =
+            movimento.field(
+                "Data e Ora"
+            );
+
+
+        if (
+            !data
+        ) {
+
+            return 0;
+        }
+
+
+        var timestamp =
+            new Date(
+                data
+            )
+            .getTime();
+
+
+        if (
+            isNaN(
+                timestamp
+            )
+        ) {
+
+            return 0;
+        }
+
+
+        return timestamp;
+    }
+
+
+    function ordinaMovimentiSalvadanaio(
+        a,
+        b
+    ) {
+
+        var tempoA =
+            tempoMovimentoSalvadanaio(
+                a
+            );
+
+
+        var tempoB =
+            tempoMovimentoSalvadanaio(
+                b
+            );
+
+
+        if (
+            tempoA < tempoB
+        ) {
+
+            return -1;
+        }
+
+
+        if (
+            tempoA > tempoB
+        ) {
+
+            return 1;
+        }
+
+
+        var idA =
+            String(
+                a.id || ""
+            );
+
+
+        var idB =
+            String(
+                b.id || ""
+            );
+
+
+        if (
+            idA < idB
+        ) {
+
+            return -1;
+        }
+
+
+        if (
+            idA > idB
+        ) {
+
+            return 1;
+        }
+
+
+        return 0;
+    }
+
+
+    function formattaSaldoProgressivoSalvadanaio(
+        valore
+    ) {
+
+        var numero =
+            Number(
+                valore
+            );
+
+
+        if (
+            !isFinite(
+                numero
+            )
+        ) {
+
+            return "";
+        }
+
+
+        var parti =
+            Math.abs(
+                numero
+            )
+            .toFixed(2)
+            .split(".");
+
+
+        var intero =
+            parti[0]
+            .replace(
+                /\B(?=(\d{3})+(?!\d))/g,
+                "."
+            );
+
+
+        var testo =
+            intero +
+            "," +
+            parti[1] +
+            " €";
+
+
+        if (
+            numero < 0
+        ) {
+
+            return (
+                "[ \u26C3 - " +
+                testo +
+                " ]"
+            );
+        }
+
+
+        return (
+            "[ \u26C3 " +
+            testo +
+            " ]"
+        );
     }
 
 
@@ -3858,7 +4017,7 @@ function ricalcolaSalvadanai() {
     ) {
 
         message(
-            "ERRORE v0.8.3: una o più librerie FINANZE non sono accessibili."
+            "ERRORE v0.8.7: una o più librerie FINANZE non sono accessibili."
         );
 
 
@@ -3905,7 +4064,9 @@ function ricalcolaSalvadanai() {
 
 
         if (
-            !isFinite(base)
+            !isFinite(
+                base
+            )
         ) {
 
             base = 0;
@@ -3919,7 +4080,46 @@ function ricalcolaSalvadanai() {
 
 
         // ----------------------------------------------------
-        // 5B. TOTALI MOVIMENTI
+        // 5B. MOVIMENTI DEL SINGOLO SALVADANAIO
+        // ----------------------------------------------------
+
+        var movimentiSalvadanaio =
+            [];
+
+
+        for (
+            var ms = 0;
+            ms < movimenti.length;
+            ms++
+        ) {
+
+            var movimentoDaVerificare =
+                movimenti[ms];
+
+
+            if (
+                contieneRelazioneSalvadanaio(
+                    movimentoDaVerificare.field(
+                        "Salvadanaio"
+                    ),
+                    salvadanaio.id
+                )
+            ) {
+
+                movimentiSalvadanaio.push(
+                    movimentoDaVerificare
+                );
+            }
+        }
+
+
+        movimentiSalvadanaio.sort(
+            ordinaMovimentiSalvadanaio
+        );
+
+
+        // ----------------------------------------------------
+        // 5C. TOTALI
         // ----------------------------------------------------
 
         var totaleAccantonamenti =
@@ -3938,31 +4138,28 @@ function ricalcolaSalvadanai() {
             null;
 
 
+        // ----------------------------------------------------
+        // 5D. SALDO PROGRESSIVO
+        // ----------------------------------------------------
+
+        var saldoProgressivoSalvadanaio =
+            arrotonda2Salvadanaio(
+                base
+            );
+
+
         // ====================================================
-        // 6. MOVIMENTI DEL SALVADANAIO
+        // 6. MOVIMENTI IN ORDINE CRONOLOGICO
         // ====================================================
 
         for (
             var m = 0;
-            m < movimenti.length;
+            m < movimentiSalvadanaio.length;
             m++
         ) {
 
             var movimento =
-                movimenti[m];
-
-
-            if (
-                !contieneRelazioneSalvadanaio(
-                    movimento.field(
-                        "Salvadanaio"
-                    ),
-                    salvadanaio.id
-                )
-            ) {
-
-                continue;
-            }
+                movimentiSalvadanaio[m];
 
 
             var importo =
@@ -3974,7 +4171,9 @@ function ricalcolaSalvadanai() {
 
 
             if (
-                !isFinite(importo) ||
+                !isFinite(
+                    importo
+                ) ||
                 importo <= 0
             ) {
 
@@ -4009,6 +4208,10 @@ function ricalcolaSalvadanai() {
                     importo;
 
 
+                saldoProgressivoSalvadanaio +=
+                    importo;
+
+
                 var dataMovimento =
                     movimento.field(
                         "Data e Ora"
@@ -4027,7 +4230,9 @@ function ricalcolaSalvadanai() {
 
 
                     if (
-                        !isNaN(timestamp) &&
+                        !isNaN(
+                            timestamp
+                        ) &&
                         (
                             ultimoIncremento === null ||
                             timestamp >
@@ -4053,6 +4258,10 @@ function ricalcolaSalvadanai() {
 
                 totaleAnticipi +=
                     importo;
+
+
+                saldoProgressivoSalvadanaio -=
+                    importo;
             }
 
 
@@ -4067,7 +4276,45 @@ function ricalcolaSalvadanai() {
 
                 totaleRimborsi +=
                     importo;
+
+
+                saldoProgressivoSalvadanaio +=
+                    importo;
             }
+
+
+            // ------------------------------------------------
+            // TIPO NON RICONOSCIUTO
+            // ------------------------------------------------
+
+            else {
+
+                continue;
+            }
+
+
+            saldoProgressivoSalvadanaio =
+                arrotonda2Salvadanaio(
+                    saldoProgressivoSalvadanaio
+                );
+
+
+            // =================================================
+            // 6A. SCRITTURA SALDO PROGRESSIVO MOVIMENTO
+            // =================================================
+
+            movimento.set(
+                "Saldo Progressivo",
+                saldoProgressivoSalvadanaio
+            );
+
+
+            movimento.set(
+                "Saldo Progressivo Visualizzato",
+                formattaSaldoProgressivoSalvadanaio(
+                    saldoProgressivoSalvadanaio
+                )
+            );
         }
 
 
@@ -4131,7 +4378,7 @@ function ricalcolaSalvadanai() {
 
 
         // ====================================================
-        // 10. SCRITTURA
+        // 10. SCRITTURA SALVADANAIO
         // ====================================================
 
         salvadanaio.set(
@@ -4168,13 +4415,17 @@ function ricalcolaSalvadanai() {
     // 11. RICALCOLO FINANZE
     // ========================================================
     //
-    // Importo Effettivo è ora aggiornato.
+    // A questo punto sono aggiornati:
     //
-    // Possiamo quindi ricalcolare:
+    // - Salvadanaio
+    // - Movimenti Salvadanaio
+    // - Saldo Progressivo Movimenti
     //
-    // - Saldo Disponibile dei Conti
+    // Possiamo quindi aggiornare:
+    //
+    // - Saldo Attuale
+    // - Saldo Disponibile
     // - Dashboard
-    // - tutti gli altri valori centralizzati.
     //
     // ========================================================
 
