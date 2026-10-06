@@ -11,67 +11,15 @@
 // SCOPO:
 // Spostare il codice fuori dall'editor Memento
 // SENZA modificare il comportamento.
+//
+// FUNZIONE PUBBLICA:
+//
+// renderCentroGestioneFinanze()
+//
 // ============================================================
 
 
 function renderCentroGestioneFinanze() {
-
-   // ============================================================
-// FINANZE
-// DASHBOARD V2
-// CENTRO GESTIONE
-// VERSIONE 0.11
-// ============================================================
-//
-// BASE:
-// v0.10 VALIDATA
-//
-// NUOVO v0.11:
-//
-// 1. NUOVO SALVADANAIO GUIDATO
-//
-//    Fisso:
-//      - Conto
-//      - Nome
-//      - Importo Iniziale
-//
-//    Manuale:
-//      - Conto
-//      - Nome
-//      - Importo Iniziale
-//
-//    Importo:
-//      - Conto
-//      - Nome
-//      - Importo Iniziale
-//      - Importo da accantonare
-//      - Entrata di Riferimento
-//
-//    Percentuale:
-//      - Conto
-//      - Nome
-//      - Importo Iniziale
-//      - Percentuale
-//      - Entrata di Riferimento
-//
-// 2. GESTISCI CONTO DA DASHBOARD
-//
-//    Adattamento:
-//    [■] Conti
-//    Gestisci Conto v0.7 COMPACT + CESTINO
-//
-// ATTIVI:
-//
-// + TRANSAZIONE
-// ✓ CHECK SALDO
-// ✓ VERIFICA ENTRATE
-// ↓ SPESA FISSA
-// ↑ ENTRATA FISSA
-// + NUOVO SALVADANAIO
-// ⚙ GESTISCI CONTO
-// ♻ RICALCOLA
-//
-// ============================================================
 
 
 // ============================================================
@@ -6326,7 +6274,7 @@ function mostraGestioneConto(
 
 if (!config) {
 
-    ui()
+    return ui()
         .layout([
 
             testo(
@@ -6869,11 +6817,16 @@ if (!config) {
     }
 
 
-    ui()
+    return ui()
         .layout(
             elementi
         )
         .width_match_parent();
 }
+
+
+// ============================================================
+// FINE renderCentroGestioneFinanze()
+// ============================================================
 
 }
