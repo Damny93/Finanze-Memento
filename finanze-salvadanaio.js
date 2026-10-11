@@ -2,21 +2,20 @@
 // FINANZE
 // MODULO SALVADANAIO
 // FILE ESTERNO
-// VERSIONE 0.13-B
+// VERSIONE 0.13-C
 // ============================================================
 //
 // BASE:
-// v0.12-D VALIDATA
+// v0.13-B VALIDATA
 //
-// MODIFICA ATOMICA v0.13-B:
-// attivato ⚙ GESTISCI SALVADANAIO con:
-// - selezione Salvadanaio attivo
-// - riepilogo Accantonato / Anticipato / Effettivo
-// - Anticipo
-// - Rimborso
+// MODIFICA ATOMICA v0.13-C:
+// gestione stato Salvadanaio:
+// - il selettore mostra attivi e inattivi
+// - CAMBIA STATO attiva/disattiva il record
+// - ricalcolo immediato del motore
+// - un Salvadanaio inattivo non accetta Anticipi/Rimborsi
 //
-// Anticipo e Rimborso riprendono la logica già validata
-// di Gestisci Salvadanaio v1.3 DEFINITIVA.
+// Nessuna modifica grafica strutturale in questa versione.
 // Nessuna transazione bancaria viene creata.
 //
 // FUNZIONI PUBBLICHE:
@@ -47,6 +46,8 @@ var FinanzeSalvadanaio = (function() {
     var TESTO = "#222222";
     var SECONDARIO = "#777777";
     var BLU = "#3F51B5";
+    var VERDE = "#2E7D32";
+    var GRIGIO = "#757575";
 
 
     // ========================================================
@@ -143,7 +144,6 @@ var FinanzeSalvadanaio = (function() {
 
         arrotonda2 =
             FinanzeCore.arrotonda2;
-
         numero =
             FinanzeCore.numero;
 
@@ -164,7 +164,6 @@ var FinanzeSalvadanaio = (function() {
     // ========================================================
     // 3. NUOVO SALVADANAIO - STEP 1
     // ========================================================
-
     function apriNuovoSalvadanaioInterno() {
 
         if (!libSalvadanaio) {
@@ -184,7 +183,6 @@ var FinanzeSalvadanaio = (function() {
                 "Percentuale",
                 "Manuale"
             ];
-
 
         var sceltaModalita =
             ui()
@@ -206,7 +204,6 @@ var FinanzeSalvadanaio = (function() {
                 ),
 
                 sceltaModalita,
-
                 spazio(7),
 
                 testo(
@@ -310,7 +307,6 @@ var FinanzeSalvadanaio = (function() {
             )
             .show();
 
-
         return false;
     }
 
@@ -353,6 +349,7 @@ var FinanzeSalvadanaio = (function() {
                 )
             );
         }
+
 
         var sceltaConto =
             ui()
@@ -435,7 +432,6 @@ var FinanzeSalvadanaio = (function() {
         var campoValoreRegola =
             null;
 
-
         var sceltaEntrata =
             null;
 
@@ -457,6 +453,7 @@ var FinanzeSalvadanaio = (function() {
                 libEntrateFisse
                     ? libEntrateFisse.entries()
                     : [];
+
 
             var opzioniEntrate =
                 [];
@@ -561,6 +558,7 @@ var FinanzeSalvadanaio = (function() {
                     "bold"
                 )
             );
+
 
             elementi.push(
                 sceltaEntrata
@@ -684,6 +682,7 @@ var FinanzeSalvadanaio = (function() {
                                 "Percentuale non valida",
                                 "La percentuale deve essere compresa tra 0 e 100."
                             );
+
                             return false;
                         }
 
@@ -704,6 +703,7 @@ var FinanzeSalvadanaio = (function() {
 
                             return false;
                         }
+
 
                         var indiceEntrata =
                             sceltaEntrata.selected;
@@ -824,7 +824,6 @@ var FinanzeSalvadanaio = (function() {
             return true;
         }
 
-
         if (
             typeof ricalcolaSalvadanai !=
             "function"
@@ -865,10 +864,7 @@ var FinanzeSalvadanaio = (function() {
 
             if (
                 !salvadanaio ||
-                salvadanaio.deleted ||
-                salvadanaio.field(
-                    "Attivo"
-                ) === false
+                salvadanaio.deleted
             ) {
                 continue;
             }
@@ -890,7 +886,6 @@ var FinanzeSalvadanaio = (function() {
             var contoTesto =
                 "";
 
-
             var relConto =
                 relazioni(
                     salvadanaio.field(
@@ -909,9 +904,22 @@ var FinanzeSalvadanaio = (function() {
                     );
             }
 
+
+            var attivoVoce =
+                salvadanaio.field(
+                    "Attivo"
+                ) === true;
+
+
             opzioni.push(
                 nome +
                 contoTesto +
+                " · " +
+                (
+                    attivoVoce
+                        ? "ATTIVO"
+                        : "INATTIVO"
+                ) +
                 " · " +
                 formattaEuro(
                     numero(
@@ -929,7 +937,7 @@ var FinanzeSalvadanaio = (function() {
         ) {
             avviso(
                 "Gestisci Salvadanaio",
-                "Non ci sono Salvadanaio attivi."
+                "Non ci sono Salvadanaio disponibili."
             );
 
             return true;
@@ -971,6 +979,7 @@ var FinanzeSalvadanaio = (function() {
                     var indice =
                         scelta.selected;
 
+
                     if (
                         indice < 0 ||
                         indice >=
@@ -981,6 +990,33 @@ var FinanzeSalvadanaio = (function() {
 
 
                     apriRiepilogoSalvadanaio(
+                        elenco[
+                            indice
+                        ]
+                    );
+
+
+                    return true;
+                }
+            )
+            .neutralButton(
+                "CAMBIA STATO",
+                function() {
+
+                    var indice =
+                        scelta.selected;
+
+
+                    if (
+                        indice < 0 ||
+                        indice >=
+                        elenco.length
+                    ) {
+                        return false;
+                    }
+
+
+                    apriCambioStatoSalvadanaio(
                         elenco[
                             indice
                         ]
@@ -1004,7 +1040,147 @@ var FinanzeSalvadanaio = (function() {
 
 
     // ========================================================
-    // 6. GESTISCI SALVADANAIO - RIEPILOGO
+    // 6. GESTISCI SALVADANAIO - CAMBIO STATO
+    // ========================================================
+
+    function apriCambioStatoSalvadanaio(
+        salvadanaio
+    ) {
+
+        if (
+            !salvadanaio ||
+            salvadanaio.deleted
+        ) {
+            avviso(
+                "Gestisci Salvadanaio",
+                "Il Salvadanaio selezionato non è più disponibile."
+            );
+
+            return;
+        }
+
+
+        var nome =
+            String(
+                salvadanaio.field(
+                    "Nome Salvadanaio"
+                ) || "Salvadanaio"
+            );
+
+
+        var attivo =
+            salvadanaio.field(
+                "Attivo"
+            ) === true;
+
+
+        var nuovoStato =
+            !attivo;
+
+
+        var effettivo =
+            arrotonda2(
+                numero(
+                    salvadanaio.field(
+                        "Importo Effettivo"
+                    )
+                )
+            );
+
+
+        var messaggio =
+            attivo
+                ? (
+                    nome +
+                    "\n\n" +
+                    "Importo Effettivo: " +
+                    formattaEuro(
+                        effettivo
+                    ) +
+                    "\n\n" +
+                    "Disattivandolo, la sua riserva non verrà più sottratta dal Saldo Disponibile e non saranno consentiti nuovi Anticipi o Rimborsi.\n\n" +
+                    "Storico e valori del Salvadanaio restano conservati."
+                )
+                : (
+                    nome +
+                    "\n\n" +
+                    "Importo Effettivo: " +
+                    formattaEuro(
+                        effettivo
+                    ) +
+                    "\n\n" +
+                    "Riattivandolo, la sua riserva tornerà a essere considerata nel Saldo Disponibile."
+                );
+
+
+        dialog()
+            .title(
+                attivo
+                    ? "Disattiva Salvadanaio"
+                    : "Attiva Salvadanaio"
+            )
+            .text(
+                messaggio
+            )
+            .positiveButton(
+                attivo
+                    ? "DISATTIVA"
+                    : "ATTIVA",
+                function() {
+
+                    if (
+                        !salvadanaio ||
+                        salvadanaio.deleted
+                    ) {
+                        return false;
+                    }
+
+
+                    salvadanaio.set(
+                        "Attivo",
+                        nuovoStato
+                    );
+
+
+                    var risultato =
+                        ricalcolaSalvadanai();
+
+
+                    if (
+                        risultato !== true
+                    ) {
+                        avviso(
+                            "Errore",
+                            "Ricalcolo Salvadanaio non completato."
+                        );
+
+                        return false;
+                    }
+
+
+                    avviso(
+                        nuovoStato
+                            ? "Salvadanaio attivato"
+                            : "Salvadanaio disattivato",
+                        nome
+                    );
+
+
+                    return true;
+                }
+            )
+            .negativeButton(
+                "ANNULLA",
+                function() {
+                    return true;
+                }
+            )
+            .show();
+    }
+
+
+    // ========================================================
+    // 7. GESTISCI SALVADANAIO - RIEPILOGO
     // ========================================================
 
     function apriRiepilogoSalvadanaio(
@@ -1055,6 +1231,13 @@ var FinanzeSalvadanaio = (function() {
                 ) || ""
             );
 
+
+        var attivo =
+            salvadanaio.field(
+                "Attivo"
+            ) === true;
+
+
         var importoSalvadanaio =
             arrotonda2(
                 numero(
@@ -1073,6 +1256,7 @@ var FinanzeSalvadanaio = (function() {
                     )
                 )
             );
+
 
         var effettivo =
             arrotonda2(
@@ -1094,6 +1278,7 @@ var FinanzeSalvadanaio = (function() {
                     "Conto"
                 )
             );
+
 
         if (
             relConto.length > 0
@@ -1131,6 +1316,16 @@ var FinanzeSalvadanaio = (function() {
                     )
                     : spazio(1),
 
+                testo(
+                    attivo
+                        ? "● ATTIVO"
+                        : "● INATTIVO",
+                    10,
+                    attivo
+                        ? VERDE
+                        : GRIGIO,
+                    "bold"
+                ),
                 spazio(8),
 
                 testo(
@@ -1214,7 +1409,6 @@ var FinanzeSalvadanaio = (function() {
                         salvadanaio,
                         "Rimborso"
                     );
-
                     return true;
                 }
             )
@@ -1229,13 +1423,29 @@ var FinanzeSalvadanaio = (function() {
 
 
     // ========================================================
-    // 7. ANTICIPO / RIMBORSO
+    // 8. ANTICIPO / RIMBORSO
     // ========================================================
 
     function apriMovimentoManuale(
         salvadanaio,
         tipo
     ) {
+
+        if (
+            !salvadanaio ||
+            salvadanaio.deleted ||
+            salvadanaio.field(
+                "Attivo"
+            ) !== true
+        ) {
+            avviso(
+                "Salvadanaio inattivo",
+                "Riattiva il Salvadanaio prima di registrare Anticipi o Rimborsi."
+            );
+
+            return;
+        }
+
 
         if (
             typeof ricalcolaSalvadanai !=
@@ -1532,13 +1742,13 @@ var FinanzeSalvadanaio = (function() {
 
 
     // ========================================================
-    // 8. API PUBBLICA
+    // 9. API PUBBLICA
     // ========================================================
 
     return {
 
         versione:
-            "0.13-B",
+            "0.13-C",
 
         apriNuovoSalvadanaio:
             function(contexto) {
