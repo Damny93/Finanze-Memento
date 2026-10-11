@@ -3,13 +3,13 @@
 // DASHBOARD V2
 // CENTRO GESTIONE
 // FILE ESTERNO
-// VERSIONE 0.12-E
+// VERSIONE 0.13-A
 //
 // BASE:
-// v0.12-D VALIDATA
+// v0.12-E VALIDATA
 //
-// MODIFICA ATOMICA:
-// Azioni operative delegate a finanze-azioni.js.
+// MODIFICA ATOMICA v0.13-A:
+// attivato ＋ NUOVO CONTO tramite finanze-conti.js.
 //
 // DIPENDENZE:
 // - moment.min.js
@@ -502,6 +502,61 @@ function renderCentroGestioneFinanze() {
 
 
     // ========================================================
+    // 19. NUOVO CONTO - DELEGA MODULO ESTERNO
+    // ========================================================
+
+    function apriNuovoConto() {
+
+        if (
+            typeof FinanzeConti ==
+            "undefined" ||
+            typeof FinanzeConti.apriNuovoConto !=
+            "function"
+        ) {
+            avviso(
+                "Nuovo conto",
+                "finanze-conti.js v0.13-A non è disponibile."
+            );
+            return true;
+        }
+
+        return FinanzeConti.apriNuovoConto({
+
+            libConti:
+                libConti,
+
+            libSaldo:
+                libSaldo,
+
+            libTransazioni:
+                libTransazioni,
+
+            libSpeseFisse:
+                libSpeseFisse,
+
+            libEntrateFisse:
+                libEntrateFisse,
+
+            libSalvadanaio:
+                libSalvadanaio,
+
+            libMovimentiSalvadanaio:
+                libMovimentiSalvadanaio,
+
+            libRegistro:
+                libRegistro,
+
+            avviso:
+                avviso,
+
+            ricalcolaSistemaCompleto:
+                ricalcolaSistemaCompleto
+
+        });
+    }
+
+
+    // ========================================================
     // 20. GESTISCI CONTO - DELEGA MODULO ESTERNO
     // ========================================================
 
@@ -517,6 +572,7 @@ function renderCentroGestioneFinanze() {
                 "Gestisci conto",
                 "finanze-conti.js non è disponibile."
             );
+
             return true;
         }
 
@@ -537,6 +593,7 @@ function renderCentroGestioneFinanze() {
 
             libEntrateFisse:
                 libEntrateFisse,
+
             libSalvadanaio:
                 libSalvadanaio,
 
@@ -683,6 +740,7 @@ function renderCentroGestioneFinanze() {
                 "bold"
             )
         );
+
         var btnNuovoConto =
             ui()
             .button(
@@ -691,7 +749,7 @@ function renderCentroGestioneFinanze() {
 
         btnNuovoConto.action(
             function() {
-                return false;
+                return apriNuovoConto();
             }
         );
 
@@ -710,7 +768,6 @@ function renderCentroGestioneFinanze() {
         elementi.push(
             ui()
                 .layout([
-
                     btnNuovoConto
                         .weight(1),
 
@@ -745,6 +802,7 @@ function renderCentroGestioneFinanze() {
             .button(
                 "＋ TRANSAZIONE"
             );
+
         btnTransazione.action(
             function() {
                 return apriNuovaTransazione();
@@ -772,7 +830,6 @@ function renderCentroGestioneFinanze() {
 
                     btnCheck
                         .weight(1)
-
                 ])
                 .horizontal()
                 .width_match_parent()
@@ -793,7 +850,6 @@ function renderCentroGestioneFinanze() {
         elementi.push(
             ui()
                 .layout([
-
                     btnVerificaEntrate
                         .weight(1)
 
@@ -975,6 +1031,7 @@ function renderCentroGestioneFinanze() {
 
                     btnCestino
                         .weight(1)
+
                 ])
                 .horizontal()
                 .width_match_parent()
