@@ -2,18 +2,19 @@
 // FINANZE
 // MODULO SALVADANAIO
 // FILE ESTERNO
-// VERSIONE 0.13-C
+// VERSIONE 0.13-D
 // ============================================================
 //
 // BASE:
-// v0.13-B VALIDATA
+// v0.13-C VALIDATA
 //
-// MODIFICA ATOMICA v0.13-C:
-// gestione stato Salvadanaio:
-// - il selettore mostra attivi e inattivi
-// - CAMBIA STATO attiva/disattiva il record
-// - ricalcolo immediato del motore
-// - un Salvadanaio inattivo non accetta Anticipi/Rimborsi
+// MODIFICA ATOMICA v0.13-D:
+// modifica regola Salvadanaio:
+// - Modalità: Fisso / Importo / Percentuale / Manuale
+// - Fisso e Manuale: Valore Regola = 0 e nessuna Entrata di Riferimento
+// - Importo: Valore Regola > 0 e Entrata di Riferimento obbligatoria
+// - Percentuale: Valore Regola > 0 e <= 100, Entrata di Riferimento obbligatoria
+// - ricalcolo immediato del motore dopo il salvataggio
 //
 // Nessuna modifica grafica strutturale in questa versione.
 // Nessuna transazione bancaria viene creata.
@@ -101,7 +102,6 @@ var FinanzeSalvadanaio = (function() {
 
         libSalvadanaio =
             ctx.libSalvadanaio;
-
         libMovimentiSalvadanaio =
             ctx.libMovimentiSalvadanaio;
 
@@ -144,6 +144,7 @@ var FinanzeSalvadanaio = (function() {
 
         arrotonda2 =
             FinanzeCore.arrotonda2;
+
         numero =
             FinanzeCore.numero;
 
@@ -164,6 +165,7 @@ var FinanzeSalvadanaio = (function() {
     // ========================================================
     // 3. NUOVO SALVADANAIO - STEP 1
     // ========================================================
+
     function apriNuovoSalvadanaioInterno() {
 
         if (!libSalvadanaio) {
@@ -204,6 +206,7 @@ var FinanzeSalvadanaio = (function() {
                 ),
 
                 sceltaModalita,
+
                 spazio(7),
 
                 testo(
@@ -267,6 +270,7 @@ var FinanzeSalvadanaio = (function() {
             ])
             .width_match_parent();
 
+
         dialog()
             .title(
                 "＋ Nuovo Salvadanaio"
@@ -284,7 +288,6 @@ var FinanzeSalvadanaio = (function() {
                         opzioniModalita[
                             indice
                         ];
-
 
                     if (!modalita) {
                         return false;
@@ -367,7 +370,6 @@ var FinanzeSalvadanaio = (function() {
         var campoImportoIniziale =
             ui()
             .edit("0");
-
 
         var elementi =
             [
@@ -514,7 +516,6 @@ var FinanzeSalvadanaio = (function() {
                 );
             }
 
-
             sceltaEntrata =
                 ui()
                 .choiceBox(
@@ -600,6 +601,7 @@ var FinanzeSalvadanaio = (function() {
                             indiceConto
                         ];
 
+
                     var nome =
                         String(
                             campoNome.text || ""
@@ -640,6 +642,7 @@ var FinanzeSalvadanaio = (function() {
                         arrotonda2(
                             importoIniziale
                         );
+
 
                     var valoreRegola =
                         0;
@@ -724,6 +727,7 @@ var FinanzeSalvadanaio = (function() {
                             ];
                     }
 
+
                     var nuovoSalvadanaio =
                         libSalvadanaio.create({
 
@@ -744,6 +748,7 @@ var FinanzeSalvadanaio = (function() {
 
                         });
 
+
                     if (!nuovoSalvadanaio) {
                         return false;
                     }
@@ -763,6 +768,7 @@ var FinanzeSalvadanaio = (function() {
                             entrataRiferimento
                         );
                     }
+
 
                     if (
                         typeof ricalcolaSalvadanai !=
@@ -806,6 +812,7 @@ var FinanzeSalvadanaio = (function() {
     }
 
 
+
     // ========================================================
     // 5. GESTISCI SALVADANAIO - SELETTORE
     // ========================================================
@@ -842,7 +849,6 @@ var FinanzeSalvadanaio = (function() {
 
         var tutti =
             libSalvadanaio.entries();
-
 
         var elenco =
             [];
@@ -968,7 +974,6 @@ var FinanzeSalvadanaio = (function() {
                     ),
 
                     scelta
-
                 ])
                 .width_match_parent()
             )
@@ -1073,7 +1078,6 @@ var FinanzeSalvadanaio = (function() {
                 "Attivo"
             ) === true;
 
-
         var nuovoStato =
             !attivo;
 
@@ -1157,7 +1161,6 @@ var FinanzeSalvadanaio = (function() {
                         return false;
                     }
 
-
                     avviso(
                         nuovoStato
                             ? "Salvadanaio attivato"
@@ -1178,7 +1181,6 @@ var FinanzeSalvadanaio = (function() {
             .show();
     }
 
-
     // ========================================================
     // 7. GESTISCI SALVADANAIO - RIEPILOGO
     // ========================================================
@@ -1198,7 +1200,6 @@ var FinanzeSalvadanaio = (function() {
 
             return;
         }
-
 
         if (
             typeof ricalcolaSalvadanai !=
@@ -1290,6 +1291,25 @@ var FinanzeSalvadanaio = (function() {
         }
 
 
+        var btnModificaRegola =
+            ui()
+            .button(
+                "✎ MODIFICA REGOLA"
+            );
+
+
+        btnModificaRegola.action(
+            function() {
+
+                apriModificaRegola(
+                    salvadanaio
+                );
+
+                return true;
+            }
+        );
+
+
         var vista =
             ui()
             .layout([
@@ -1306,7 +1326,6 @@ var FinanzeSalvadanaio = (function() {
                     10,
                     SECONDARIO
                 ),
-
                 modalita
                     ? testo(
                         "Modalità · " +
@@ -1326,6 +1345,7 @@ var FinanzeSalvadanaio = (function() {
                         : GRIGIO,
                     "bold"
                 ),
+
                 spazio(8),
 
                 testo(
@@ -1378,7 +1398,11 @@ var FinanzeSalvadanaio = (function() {
                     18,
                     TESTO,
                     "bold"
-                )
+                ),
+
+                spazio(9),
+
+                btnModificaRegola
 
             ])
             .width_match_parent();
@@ -1409,6 +1433,7 @@ var FinanzeSalvadanaio = (function() {
                         salvadanaio,
                         "Rimborso"
                     );
+
                     return true;
                 }
             )
@@ -1423,7 +1448,670 @@ var FinanzeSalvadanaio = (function() {
 
 
     // ========================================================
-    // 8. ANTICIPO / RIMBORSO
+    // 8. MODIFICA REGOLA
+    // ========================================================
+
+    function apriModificaRegola(
+        salvadanaio
+    ) {
+
+        if (
+            !salvadanaio ||
+            salvadanaio.deleted
+        ) {
+            avviso(
+                "Modifica Regola",
+                "Il Salvadanaio selezionato non è più disponibile."
+            );
+
+            return;
+        }
+
+
+        var opzioniModalita =
+            [
+                "Fisso",
+                "Importo",
+                "Percentuale",
+                "Manuale"
+            ];
+
+
+        var modalitaCorrente =
+            String(
+                salvadanaio.field(
+                    "Modalità"
+                ) || "Fisso"
+            );
+
+
+        var indiceCorrente =
+            0;
+
+
+        for (
+            var i = 0;
+            i < opzioniModalita.length;
+            i++
+        ) {
+            if (
+                opzioniModalita[i] ==
+                modalitaCorrente
+            ) {
+                indiceCorrente = i;
+                break;
+            }
+        }
+
+
+        var sceltaModalita =
+            ui()
+            .choiceBox(
+                indiceCorrente,
+                opzioniModalita
+            );
+
+
+        var valoreCorrente =
+            arrotonda2(
+                numero(
+                    salvadanaio.field(
+                        "Valore Regola"
+                    )
+                )
+            );
+
+
+        var riferimentoCorrente =
+            "Nessuno";
+
+
+        var relRiferimento =
+            relazioni(
+                salvadanaio.field(
+                    "Entrata di Riferimento"
+                )
+            );
+
+
+        if (
+            relRiferimento.length > 0
+        ) {
+            riferimentoCorrente =
+                String(
+                    relRiferimento[0].field(
+                        "Entrata"
+                    ) || "Entrata"
+                );
+        }
+
+
+        var vista =
+            ui()
+            .layout([
+
+                testo(
+                    "MODALITÀ ATTUALE",
+                    10,
+                    BLU,
+                    "bold"
+                ),
+                testo(
+                    modalitaCorrente,
+                    14,
+                    TESTO,
+                    "bold"
+                ),
+
+                spazio(5),
+
+                testo(
+                    "Valore Regola · " +
+                    (
+                        modalitaCorrente == "Percentuale"
+                            ? String(valoreCorrente) + " %"
+                            : formattaEuro(valoreCorrente)
+                    ),
+                    10,
+                    SECONDARIO
+                ),
+
+                testo(
+                    "Entrata · " +
+                    riferimentoCorrente,
+                    10,
+                    SECONDARIO
+                ),
+
+                spazio(9),
+
+                testo(
+                    "NUOVA MODALITÀ",
+                    10,
+                    BLU,
+                    "bold"
+                ),
+
+                sceltaModalita
+
+            ])
+            .width_match_parent();
+
+        dialog()
+            .title(
+                "✎ Modifica Regola"
+            )
+            .view(vista)
+            .positiveButton(
+                "CONTINUA",
+                function() {
+
+                    var indice =
+                        sceltaModalita.selected;
+
+
+                    if (
+                        indice < 0 ||
+                        indice >=
+                        opzioniModalita.length
+                    ) {
+                        return false;
+                    }
+
+                    apriDatiModificaRegola(
+                        salvadanaio,
+                        opzioniModalita[
+                            indice
+                        ]
+                    );
+
+
+                    return true;
+                }
+            )
+            .negativeButton(
+                "ANNULLA",
+                function() {
+                    return true;
+                }
+            )
+            .show();
+    }
+
+    // ========================================================
+    // 9. MODIFICA REGOLA - DATI / SALVATAGGIO
+    // ========================================================
+
+    function apriDatiModificaRegola(
+        salvadanaio,
+        nuovaModalita
+    ) {
+
+        if (
+            !salvadanaio ||
+            salvadanaio.deleted
+        ) {
+            avviso(
+                "Modifica Regola",
+                "Il Salvadanaio selezionato non è più disponibile."
+            );
+
+            return;
+        }
+
+
+        var richiedeRegola =
+            (
+                nuovaModalita == "Importo" ||
+                nuovaModalita == "Percentuale"
+            );
+
+
+        if (
+            !richiedeRegola
+        ) {
+
+            var testoConferma =
+                nuovaModalita == "Fisso"
+                    ? "La modalità Fisso non usa Valore Regola né Entrata di Riferimento."
+                    : "La modalità Manuale non usa Valore Regola né Entrata di Riferimento.";
+
+
+            dialog()
+                .title(
+                    "Regola · " +
+                    nuovaModalita
+                )
+                .text(
+                    testoConferma +
+                    "\n\n" +
+                    "Valore Regola verrà impostato a 0 e gli eventuali collegamenti a Entrata di Riferimento saranno rimossi."
+                )
+                .positiveButton(
+                    "SALVA",
+                    function() {
+
+                        return salvaRegolaSalvadanaio(
+                            salvadanaio,
+                            nuovaModalita,
+                            0,
+                            null
+                        );
+                    }
+                )
+                .negativeButton(
+                    "ANNULLA",
+                    function() {
+                        return true;
+                    }
+                )
+                .show();
+
+
+            return;
+        }
+
+
+        if (!libEntrateFisse) {
+            avviso(
+                "Entrata di Riferimento",
+                "La libreria [■] Entrate Fisse non è accessibile."
+            );
+
+            return;
+        }
+
+        var tutteEntrate =
+            libEntrateFisse.entries();
+
+
+        var riferimentiEntrate =
+            [];
+
+
+        var opzioniEntrate =
+            [];
+
+
+        var riferimentoAttuale =
+            relazioni(
+                salvadanaio.field(
+                    "Entrata di Riferimento"
+                )
+            );
+
+        var idRiferimentoAttuale =
+            riferimentoAttuale.length > 0
+                ? String(
+                    riferimentoAttuale[0].id || ""
+                )
+                : "";
+
+
+        var indiceRiferimentoAttuale =
+            0;
+
+
+        for (
+            var e = 0;
+            e < tutteEntrate.length;
+            e++
+        ) {
+
+            var entrata =
+                tutteEntrate[e];
+
+            if (
+                !entrata ||
+                entrata.deleted
+            ) {
+                continue;
+            }
+
+
+            if (
+                String(
+                    entrata.id || ""
+                ) ==
+                idRiferimentoAttuale
+            ) {
+                indiceRiferimentoAttuale =
+                    riferimentiEntrate.length;
+            }
+
+
+            riferimentiEntrate.push(
+                entrata
+            );
+
+
+            var nomeEntrata =
+                String(
+                    entrata.field(
+                        "Entrata"
+                    ) || "Entrata"
+                );
+
+
+            var relConto =
+                relazioni(
+                    entrata.field(
+                        "Conto"
+                    )
+                );
+
+
+            if (
+                relConto.length > 0
+            ) {
+                nomeEntrata +=
+                    " · " +
+                    etichettaConto(
+                        relConto[0]
+                    );
+            }
+
+
+            opzioniEntrate.push(
+                nomeEntrata
+            );
+        }
+
+
+        if (
+            riferimentiEntrate.length == 0
+        ) {
+            avviso(
+                "Entrata di Riferimento",
+                "Non esistono Entrate Fisse disponibili."
+            );
+
+            return;
+        }
+
+
+        var modalitaAttuale =
+            String(
+                salvadanaio.field(
+                    "Modalità"
+                ) || ""
+            );
+
+
+        var valoreAttuale =
+            arrotonda2(
+                numero(
+                    salvadanaio.field(
+                        "Valore Regola"
+                    )
+                )
+            );
+
+
+        var valorePredefinito =
+            modalitaAttuale == nuovaModalita &&
+            valoreAttuale > 0
+                ? String(
+                    valoreAttuale
+                ).replace(
+                    ".",
+                    ","
+                )
+                : "";
+
+
+        var campoValore =
+            ui()
+            .edit(
+                valorePredefinito
+            );
+
+
+        var sceltaEntrata =
+            ui()
+            .choiceBox(
+                indiceRiferimentoAttuale,
+                opzioniEntrate
+            );
+
+
+        var vista =
+            ui()
+            .layout([
+
+                testo(
+                    "MODALITÀ",
+                    10,
+                    BLU,
+                    "bold"
+                ),
+                testo(
+                    nuovaModalita,
+                    14,
+                    TESTO,
+                    "bold"
+                ),
+
+                spazio(8),
+
+                testo(
+                    nuovaModalita == "Percentuale"
+                        ? "PERCENTUALE DA ACCANTONARE (%)"
+                        : "IMPORTO DA ACCANTONARE (€)",
+                    10,
+                    BLU,
+                    "bold"
+                ),
+
+                campoValore,
+
+                spazio(7),
+
+                testo(
+                    "ENTRATA DI RIFERIMENTO",
+                    10,
+                    BLU,
+                    "bold"
+                ),
+
+                sceltaEntrata
+
+            ])
+            .width_match_parent();
+
+
+        dialog()
+            .title(
+                "Regola · " +
+                nuovaModalita
+            )
+            .view(vista)
+            .positiveButton(
+                "SALVA",
+                function() {
+
+                    var valore =
+                        parseImporto(
+                            campoValore.text
+                        );
+
+
+                    if (
+                        valore === null ||
+                        valore <= 0
+                    ) {
+                        avviso(
+                            "Valore non valido",
+                            nuovaModalita == "Percentuale"
+                                ? "Inserisci una percentuale maggiore di zero."
+                                : "Inserisci un importo maggiore di zero."
+                        );
+
+                        return false;
+                    }
+
+
+                    if (
+                        nuovaModalita == "Percentuale" &&
+                        valore > 100
+                    ) {
+                        avviso(
+                            "Percentuale non valida",
+                            "La percentuale deve essere compresa tra 0 e 100."
+                        );
+
+                        return false;
+                    }
+
+
+                    var indiceEntrata =
+                        sceltaEntrata.selected;
+
+
+                    if (
+                        indiceEntrata < 0 ||
+                        indiceEntrata >=
+                        riferimentiEntrate.length
+                    ) {
+                        return false;
+                    }
+
+
+                    return salvaRegolaSalvadanaio(
+                        salvadanaio,
+                        nuovaModalita,
+                        arrotonda2(
+                            valore
+                        ),
+                        riferimentiEntrate[
+                            indiceEntrata
+                        ]
+                    );
+                }
+            )
+            .negativeButton(
+                "ANNULLA",
+                function() {
+                    return true;
+                }
+            )
+            .show();
+    }
+
+
+    // ========================================================
+    // 10. SALVA REGOLA
+    // ========================================================
+
+    function salvaRegolaSalvadanaio(
+        salvadanaio,
+        modalita,
+        valoreRegola,
+        entrataRiferimento
+    ) {
+
+        if (
+            !salvadanaio ||
+            salvadanaio.deleted
+        ) {
+            return false;
+        }
+
+
+        var collegamentiAttuali =
+            relazioni(
+                salvadanaio.field(
+                    "Entrata di Riferimento"
+                )
+            );
+
+
+        for (
+            var i =
+                collegamentiAttuali.length - 1;
+            i >= 0;
+            i--
+        ) {
+            salvadanaio.unlink(
+                "Entrata di Riferimento",
+                collegamentiAttuali[i]
+            );
+        }
+
+
+        salvadanaio.set(
+            "Modalità",
+            modalita
+        );
+
+
+        salvadanaio.set(
+            "Valore Regola",
+            valoreRegola
+        );
+
+
+        if (
+            entrataRiferimento
+        ) {
+            salvadanaio.link(
+                "Entrata di Riferimento",
+                entrataRiferimento
+            );
+        }
+
+
+        var risultato =
+            ricalcolaSalvadanai();
+
+
+        if (
+            risultato !== true
+        ) {
+            avviso(
+                "Errore",
+                "Ricalcolo Salvadanaio non completato."
+            );
+
+            return false;
+        }
+
+
+        avviso(
+            "Regola aggiornata",
+            modalita == "Percentuale"
+                ? (
+                    "Modalità: " +
+                    modalita +
+                    "\nValore Regola: " +
+                    String(valoreRegola).replace(".", ",") +
+                    " %"
+                )
+                : (
+                    modalita == "Importo"
+                        ? (
+                            "Modalità: " +
+                            modalita +
+                            "\nValore Regola: " +
+                            formattaEuro(
+                                valoreRegola
+                            )
+                        )
+                        : (
+                            "Modalità: " +
+                            modalita +
+                            "\nValore Regola: 0"
+                        )
+                )
+        );
+
+
+        return true;
+    }
+
+
+    // ========================================================
+    // 11. ANTICIPO / RIMBORSO
     // ========================================================
 
     function apriMovimentoManuale(
@@ -1470,7 +2158,6 @@ var FinanzeSalvadanaio = (function() {
                 ) || "Salvadanaio"
             );
 
-
         var massimo =
             tipo == "Anticipo"
                 ? numero(
@@ -1493,6 +2180,7 @@ var FinanzeSalvadanaio = (function() {
                 )
             );
 
+
         if (
             massimo <= 0
         ) {
@@ -1513,6 +2201,7 @@ var FinanzeSalvadanaio = (function() {
             ui()
             .edit("");
 
+
         var campoNote =
             ui()
             .edit("");
@@ -1530,7 +2219,6 @@ var FinanzeSalvadanaio = (function() {
                 ),
 
                 spazio(6),
-
                 testo(
                     "IMPORTO MASSIMO",
                     10,
@@ -1571,7 +2259,6 @@ var FinanzeSalvadanaio = (function() {
 
             ])
             .width_match_parent();
-
 
         dialog()
             .title(
@@ -1615,7 +2302,6 @@ var FinanzeSalvadanaio = (function() {
                             campoImporto.text
                         );
 
-
                     if (
                         importo === null ||
                         importo <= 0
@@ -1656,7 +2342,6 @@ var FinanzeSalvadanaio = (function() {
                             campoNote.text || ""
                         )
                         .trim();
-
 
                     var nuovoMovimento =
                         libMovimentiSalvadanaio.create({
@@ -1701,6 +2386,7 @@ var FinanzeSalvadanaio = (function() {
                     var risultato =
                         ricalcolaSalvadanai();
 
+
                     if (
                         risultato !== true
                     ) {
@@ -1740,7 +2426,6 @@ var FinanzeSalvadanaio = (function() {
             .show();
     }
 
-
     // ========================================================
     // 9. API PUBBLICA
     // ========================================================
@@ -1748,7 +2433,7 @@ var FinanzeSalvadanaio = (function() {
     return {
 
         versione:
-            "0.13-C",
+            "0.13-D",
 
         apriNuovoSalvadanaio:
             function(contexto) {
@@ -1760,7 +2445,6 @@ var FinanzeSalvadanaio = (function() {
                     );
 
                     return apriNuovoSalvadanaioInterno();
-
                 } catch (
                     errore
                 ) {
@@ -1846,6 +2530,7 @@ var FinanzeSalvadanaio = (function() {
                             )
                             .show();
                     }
+
 
                     return true;
                 }
