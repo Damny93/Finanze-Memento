@@ -2,26 +2,31 @@
 // FINANZE
 // MODULO CONTI
 // FILE ESTERNO
-// VERSIONE 0.12-C
+// VERSIONE 0.13-A
 // ============================================================
 //
 // BASE:
 // Gestisci Conto estratto da finanze-dashboard.js v0.12-B
 //
 // SCOPO:
+// - Nuovo Conto
 // - selettore Gestisci Conto
 // - Archivia
 // - Unisci
 // - Elimina Tutto
 // - Registro Eliminazioni collegato
 //
-// NESSUNA MODIFICA ALLA LOGICA VALIDATA.
+// MODIFICA ATOMICA v0.13-A:
+// - aggiunta creazione guidata Nuovo Conto
+// - gestione conto v0.12-C invariata
 //
 // FUNZIONE PUBBLICA:
+// FinanzeConti.apriNuovoConto(contexto)
 // FinanzeConti.apriGestisciConto(contexto)
 //
-// DIPENDENZA:
-// finanze-core.js
+// DIPENDENZE:
+// - moment.min.js
+// - finanze-core.js
 // ============================================================
 
 var FinanzeConti = (function() {
@@ -34,7 +39,6 @@ var FinanzeConti = (function() {
     var libSalvadanaio = null;
     var libMovimentiSalvadanaio = null;
     var libRegistro = null;
-
     var avviso = null;
     var ricalcolaSistemaCompleto = null;
 
@@ -42,6 +46,7 @@ var FinanzeConti = (function() {
     var numero = null;
     var dueCifre = null;
     var formattaEuro = null;
+    var parseImporto = null;
     var pulisciElementi = null;
     var etichettaConto = null;
 
@@ -117,17 +122,441 @@ var FinanzeConti = (function() {
 
         numero =
             FinanzeCore.numero;
-
         dueCifre =
             FinanzeCore.dueCifre;
 
         formattaEuro =
             FinanzeCore.formattaEuro;
+
+        parseImporto =
+            FinanzeCore.parseImporto;
+
         pulisciElementi =
             FinanzeCore.pulisciElementi;
 
         etichettaConto =
             FinanzeCore.etichettaConto;
+    }
+
+
+    // ========================================================
+    // 19. NUOVO CONTO
+    // ========================================================
+    function apriNuovoContoInterno() {
+
+        if (!libConti) {
+            avviso(
+                "Nuovo conto",
+                "La libreria [■] Conti non è accessibile."
+            );
+
+            return true;
+        }
+
+        var tipiConto =
+            [
+                "Conto Corrente",
+                "Contanti",
+                "Carta di Credito",
+                "Conto di Risparmio",
+                "Conto Virtuale",
+                "Conto con scoperto",
+                "Investimento",
+                "Prestito",
+                "Mutuo",
+                "Assicurazione",
+                "Bonus",
+                "Generale"
+            ];
+
+        var campoIstituto =
+            ui()
+            .edit("");
+
+        var campoNome =
+            ui()
+            .edit("");
+
+        var sceltaTipo =
+            ui()
+            .choiceBox(
+                0,
+                tipiConto
+            );
+        var campoFido =
+            ui()
+            .edit("0");
+
+        var campoSaldoIniziale =
+            ui()
+            .edit("0");
+
+        var campoDataSaldo =
+            ui()
+            .edit(
+                moment()
+                    .format(
+                        "DD/MM/YYYY"
+                    )
+            );
+
+        var vista =
+            ui()
+            .layout([
+                testo(
+                    "ISTITUTO",
+                    10,
+                    BLU,
+                    "bold"
+                ),
+
+                campoIstituto,
+
+                testo(
+                    "Facoltativo per contanti o conti personali.",
+                    9,
+                    "#777777"
+                ),
+
+                ui()
+                    .text("")
+                    .height(6),
+
+                testo(
+                    "NOME CONTO",
+                    10,
+                    BLU,
+                    "bold"
+                ),
+
+                campoNome,
+
+                ui()
+                    .text("")
+                    .height(6),
+
+                testo(
+                    "TIPO DI CONTO",
+                    10,
+                    BLU,
+                    "bold"
+                ),
+
+                sceltaTipo,
+
+                ui()
+                    .text("")
+                    .height(6),
+
+                testo(
+                    "FIDO (€)",
+                    10,
+                    BLU,
+                    "bold"
+                ),
+
+                campoFido,
+
+                testo(
+                    "Inserisci 0 se il conto non dispone di fido.",
+                    9,
+                    "#777777"
+                ),
+
+                ui()
+                    .text("")
+                    .height(6),
+
+                testo(
+                    "SALDO INIZIALE (€)",
+                    10,
+                    BLU,
+                    "bold"
+                ),
+
+                campoSaldoIniziale,
+
+                ui()
+                    .text("")
+                    .height(6),
+
+                testo(
+                    "DATA SALDO INIZIALE",
+                    10,
+                    BLU,
+                    "bold"
+                ),
+                campoDataSaldo,
+
+                testo(
+                    "Formato: GG/MM/AAAA",
+                    9,
+                    "#777777"
+                )
+
+            ])
+            .width_match_parent();
+
+        dialog()
+            .title(
+                "＋ Nuovo Conto"
+            )
+            .view(vista)
+            .positiveButton(
+                "CREA",
+                function() {
+
+                    try {
+
+                        var istituto =
+                            String(
+                                campoIstituto.text || ""
+                            )
+                            .trim();
+
+                        var nome =
+                            String(
+                                campoNome.text || ""
+                            )
+                            .trim();
+
+                        if (!nome) {
+                            avviso(
+                                "Dato mancante",
+                                "Inserisci il Nome Conto."
+                            );
+
+                            return false;
+                        }
+
+                        var indiceTipo =
+                            sceltaTipo.selected;
+
+                        if (
+                            indiceTipo < 0 ||
+                            indiceTipo >=
+                            tipiConto.length
+                        ) {
+                            avviso(
+                                "Tipo di conto",
+                                "Seleziona il Tipo di Conto."
+                            );
+
+                            return false;
+                        }
+
+                        var tipo =
+                            tipiConto[
+                                indiceTipo
+                            ];
+
+                        var fido =
+                            parseImporto(
+                                campoFido.text
+                            );
+
+                        if (
+                            fido === null ||
+                            fido < 0
+                        ) {
+                            avviso(
+                                "Fido non valido",
+                                "Il Fido deve essere maggiore o uguale a zero."
+                            );
+
+                            return false;
+                        }
+
+                        fido =
+                            arrotonda2(
+                                fido
+                            );
+
+                        var saldoIniziale =
+                            parseImporto(
+                                campoSaldoIniziale.text
+                            );
+
+                        if (
+                            saldoIniziale === null
+                        ) {
+                            avviso(
+                                "Saldo non valido",
+                                "Inserisci un Saldo Iniziale valido."
+                            );
+
+                            return false;
+                        }
+
+                        saldoIniziale =
+                            arrotonda2(
+                                saldoIniziale
+                            );
+
+                        var dataSaldo =
+                            moment(
+                                String(
+                                    campoDataSaldo.text || ""
+                                ).trim(),
+                                "DD/MM/YYYY",
+                                true
+                            );
+
+                        if (
+                            !dataSaldo.isValid()
+                        ) {
+                            avviso(
+                                "Data non valida",
+                                "Usa il formato GG/MM/AAAA."
+                            );
+
+                            return false;
+                        }
+
+                        var tuttiConti =
+                            libConti.entries();
+
+                        var istitutoChiave =
+                            istituto
+                                .toLowerCase();
+
+                        var nomeChiave =
+                            nome
+                                .toLowerCase();
+
+                        for (
+                            var i = 0;
+                            i < tuttiConti.length;
+                            i++
+                        ) {
+                            var esistente =
+                                tuttiConti[i];
+
+                            if (
+                                !esistente ||
+                                esistente.deleted
+                            ) {
+                                continue;
+                            }
+
+                            var istitutoEsistente =
+                                String(
+                                    esistente.field(
+                                        "Istituto"
+                                    ) || ""
+                                )
+                                .trim()
+                                .toLowerCase();
+
+                            var nomeEsistente =
+                                String(
+                                    esistente.field(
+                                        "Nome Conto"
+                                    ) || ""
+                                )
+                                .trim()
+                                .toLowerCase();
+
+                            if (
+                                istitutoEsistente ==
+                                    istitutoChiave &&
+                                nomeEsistente ==
+                                    nomeChiave
+                            ) {
+                                avviso(
+                                    "Conto già presente",
+                                    "Esiste già un conto con lo stesso Istituto e Nome Conto."
+                                );
+
+                                return false;
+                            }
+                        }
+
+                        var nuovoConto =
+                            libConti.create({
+                                "Istituto":
+                                    istituto,
+
+                                "Nome Conto":
+                                    nome,
+
+                                "Tipo di Conto":
+                                    tipo,
+
+                                "Attivo":
+                                    true,
+
+                                "Fido":
+                                    fido,
+
+                                "Saldo Iniziale":
+                                    saldoIniziale,
+
+                                "Data Saldo Iniziale":
+                                    dataSaldo
+                                        .startOf("day")
+                                        .toDate()
+                                        .getTime()
+
+                            });
+
+                        if (!nuovoConto) {
+                            avviso(
+                                "Nuovo conto",
+                                "Creazione del conto non riuscita."
+                            );
+
+                            return false;
+                        }
+
+                        if (
+                            typeof ricalcolaSistemaCompleto ==
+                            "function"
+                        ) {
+                            ricalcolaSistemaCompleto();
+                        }
+                        avviso(
+                            "Conto creato",
+                            etichettaConto(
+                                nuovoConto
+                            ) +
+                            "\n\n" +
+                            "Tipo: " +
+                            tipo +
+                            "\n" +
+                            "Saldo iniziale: " +
+                            formattaEuro(
+                                saldoIniziale
+                            ) +
+                            "\n" +
+                            "Fido: " +
+                            formattaEuro(
+                                fido
+                            )
+                        );
+
+                        return true;
+
+                    } catch (errore) {
+
+                        avviso(
+                            "Errore Nuovo Conto",
+                            String(errore)
+                        );
+
+                        return false;
+                    }
+                }
+            )
+            .negativeButton(
+                "ANNULLA",
+                function() {
+                    return true;
+                }
+            )
+            .show();
+
+        return false;
     }
 
 
@@ -148,7 +577,6 @@ var FinanzeConti = (function() {
 
             return true;
         }
-
         var tutti =
             libConti.entries();
 
@@ -190,7 +618,6 @@ var FinanzeConti = (function() {
                 )
             );
         }
-
         if (
             elenco.length == 0
         ) {
@@ -248,6 +675,7 @@ var FinanzeConti = (function() {
                             indice
                         ]
                     );
+
                     return true;
                 }
             )
@@ -332,6 +760,7 @@ var FinanzeConti = (function() {
             );
         }
 
+
         function gcLinea() {
             return gcTxt(
                 "━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
@@ -356,7 +785,6 @@ var FinanzeConti = (function() {
             );
         }
 
-
         function gcRiga(
             valore,
             colore,
@@ -372,6 +800,7 @@ var FinanzeConti = (function() {
                         GC_NERO,
                         "bold"
                     ),
+
                     gcTxt(
                         "  " +
                         valore,
@@ -502,7 +931,6 @@ var FinanzeConti = (function() {
                         "Disponibilità Formattata"
                     ) ||
                     "Check Saldo";
-
             } else if (
                 tipo == "Spesa Fissa"
             ) {
@@ -518,6 +946,7 @@ var FinanzeConti = (function() {
                     record.field(
                         "Entrata"
                     );
+
             } else if (
                 tipo == "Salvadanaio"
             ) {
@@ -538,11 +967,11 @@ var FinanzeConti = (function() {
                         "Tipo di Movimento"
                     );
             }
+
             valore =
                 String(
                     valore || ""
                 );
-
             if (
                 valore == ""
             ) {
@@ -621,6 +1050,7 @@ var FinanzeConti = (function() {
 
                     "Libreria Origine":
                         libreriaOrigine,
+
                     "Tipo Elemento":
                         tipoElemento,
 
@@ -662,6 +1092,7 @@ var FinanzeConti = (function() {
                         )
 
                 });
+
             if (!rigaRegistro) {
                 throw (
                     "Impossibile creare Registro per " +
@@ -829,6 +1260,7 @@ var FinanzeConti = (function() {
                 totaleEntrate +=
                     valore;
             }
+
             if (
                 tr.field(
                     "Tipo"
@@ -849,6 +1281,7 @@ var FinanzeConti = (function() {
             arrotonda2(
                 totaleUscite
             );
+
         var riserva =
             0;
 
@@ -869,6 +1302,7 @@ var FinanzeConti = (function() {
             arrotonda2(
                 riserva
             );
+
 
         function archiviaConto() {
 
@@ -973,6 +1407,7 @@ var FinanzeConti = (function() {
                         )
                     );
                 }
+
                 if (bloccoRiserva) {
                     elementi.push(
                         gcRiga(
@@ -1061,7 +1496,6 @@ var FinanzeConti = (function() {
                                 String(err)
                             );
                         }
-
                         return true;
                     }
                 )
@@ -1203,11 +1637,11 @@ var FinanzeConti = (function() {
                     "Fido",
                     0
                 );
+
                 conto.set(
                     "Saldo Attuale",
                     0
                 );
-
                 conto.set(
                     "Saldo Disponibile",
                     0
@@ -1291,7 +1725,6 @@ var FinanzeConti = (function() {
                     nomeDest +
                     "\n\nLa destinazione deve essere completamente vuota."
                 );
-
                 return;
             }
 
@@ -1370,6 +1803,7 @@ var FinanzeConti = (function() {
 
             var etichette =
                 [];
+
             for (
                 var i = 0;
                 i < tutti.length;
@@ -1411,6 +1845,7 @@ var FinanzeConti = (function() {
 
                 return;
             }
+
             var scelta =
                 ui()
                 .choiceBox(
@@ -1473,6 +1908,7 @@ var FinanzeConti = (function() {
                         ) {
                             return false;
                         }
+
                         mostraAnteprimaUnione(
                             destinazioni[
                                 indice
@@ -1598,11 +2034,11 @@ var FinanzeConti = (function() {
 
             var registriTransazioni =
                 [];
+
             var registroConto =
                 null;
 
             try {
-
                 for (
                     var m = 0;
                     m < movimenti.length;
@@ -1639,6 +2075,7 @@ var FinanzeConti = (function() {
                         )
                     );
                 }
+
                 for (
                     var en = 0;
                     en < dep.entrate.length;
@@ -1743,6 +2180,7 @@ var FinanzeConti = (function() {
                         registriSalvadanai[cs]
                     );
                 }
+
                 for (
                     var ce = 0;
                     ce < dep.entrate.length;
@@ -1831,7 +2269,6 @@ var FinanzeConti = (function() {
                     GC_TITOLO,
                     "bold"
                 ),
-
                 gcTxt(
                     (
                         tipoConto ||
@@ -1894,7 +2331,6 @@ var FinanzeConti = (function() {
                 gcLinea()
 
             ]);
-
 
         var bloccoCollegati =
             ui()
@@ -1978,7 +2414,6 @@ var FinanzeConti = (function() {
                     .layout([
 
                         header,
-
                         gcGap(9),
 
                         bloccoConto,
@@ -2020,7 +2455,6 @@ var FinanzeConti = (function() {
                         ),
 
                         gcLinea()
-
                     ])
             )
             .positiveButton(
@@ -2053,10 +2487,55 @@ var FinanzeConti = (function() {
     return {
 
         versione:
-            "0.12-C",
+            "0.13-A",
+
+        apriNuovoConto:
+            function(contexto) {
+
+                try {
+
+                    configura(
+                        contexto
+                    );
+
+                    return apriNuovoContoInterno();
+
+                } catch (errore) {
+
+                    if (
+                        contexto &&
+                        typeof contexto.avviso ==
+                        "function"
+                    ) {
+                        contexto.avviso(
+                            "Nuovo conto",
+                            String(errore)
+                        );
+
+                    } else {
+                        dialog()
+                            .title(
+                                "Nuovo conto"
+                            )
+                            .text(
+                                String(errore)
+                            )
+                            .positiveButton(
+                                "OK",
+                                function() {
+                                    return true;
+                                }
+                            )
+                            .show();
+                    }
+
+                    return true;
+                }
+            },
 
         apriGestisciConto:
             function(contexto) {
+
                 try {
 
                     configura(
