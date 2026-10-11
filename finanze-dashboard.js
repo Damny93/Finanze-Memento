@@ -3,13 +3,14 @@
 // DASHBOARD V2
 // CENTRO GESTIONE
 // FILE ESTERNO
-// VERSIONE 0.13-A
+// VERSIONE 0.13-B
 //
 // BASE:
-// v0.12-E VALIDATA
+// v0.13-A VALIDATA
 //
-// MODIFICA ATOMICA v0.13-A:
-// attivato ＋ NUOVO CONTO tramite finanze-conti.js.
+// MODIFICA ATOMICA v0.13-B:
+// attivato ⚙ GESTISCI SALVADANAIO tramite
+// finanze-salvadanaio.js.
 //
 // DIPENDENZE:
 // - moment.min.js
@@ -39,6 +40,7 @@ function renderCentroGestioneFinanze() {
 
     var numero =
         FinanzeCore.numero;
+
     var dueCifre =
         FinanzeCore.dueCifre;
 
@@ -59,6 +61,7 @@ function renderCentroGestioneFinanze() {
 
     var contieneElemento =
         FinanzeCore.contieneElemento;
+
     var pulisciElementi =
         FinanzeCore.pulisciElementi;
 
@@ -78,7 +81,6 @@ function renderCentroGestioneFinanze() {
 
     var libSaldo =
         libByName("[■] Saldo");
-
     var libTransazioni =
         libByName("[■] Transazioni");
 
@@ -184,6 +186,7 @@ function renderCentroGestioneFinanze() {
 
     var config =
         null;
+
     for (
         var i = 0;
         i < recordsDashboard.length;
@@ -244,7 +247,6 @@ function renderCentroGestioneFinanze() {
     // ========================================================
     // 9. RICALCOLI
     // ========================================================
-
     function ricalcolaMotore() {
         ricalcolaFinanze(
             libSaldo,
@@ -328,7 +330,6 @@ function renderCentroGestioneFinanze() {
         return risultato;
     }
 
-
     // ========================================================
     // ========================================================
     // 11. AZIONI OPERATIVE - DELEGA MODULO ESTERNO
@@ -349,7 +350,6 @@ function renderCentroGestioneFinanze() {
 
             libEntrateFisse:
                 libEntrateFisse,
-
             checks:
                 checks,
 
@@ -433,7 +433,6 @@ function renderCentroGestioneFinanze() {
 
 
     function apriCheckSaldo() {
-
         if (
             !moduloAzioniDisponibile() ||
             typeof FinanzeAzioni.apriCheckSaldo !=
@@ -497,6 +496,49 @@ function renderCentroGestioneFinanze() {
 
             avviso:
                 avviso
+
+        });
+    }
+
+
+    // ========================================================
+    // 15. GESTISCI SALVADANAIO - DELEGA MODULO ESTERNO
+    // ========================================================
+
+    function apriGestisciSalvadanaio() {
+
+        if (
+            typeof FinanzeSalvadanaio ==
+            "undefined" ||
+            typeof FinanzeSalvadanaio.apriGestisciSalvadanaio !=
+            "function"
+        ) {
+            avviso(
+                "Gestisci Salvadanaio",
+                "finanze-salvadanaio.js v0.13-B non è disponibile."
+            );
+
+            return true;
+        }
+
+
+        return FinanzeSalvadanaio.apriGestisciSalvadanaio({
+
+            libEntrateFisse:
+                libEntrateFisse,
+
+            libSalvadanaio:
+                libSalvadanaio,
+
+            libMovimentiSalvadanaio:
+                libMovimentiSalvadanaio,
+
+            contiAttivi:
+                contiAttivi,
+
+            avviso:
+                avviso
+
         });
     }
 
@@ -517,6 +559,7 @@ function renderCentroGestioneFinanze() {
                 "Nuovo conto",
                 "finanze-conti.js v0.13-A non è disponibile."
             );
+
             return true;
         }
 
@@ -536,7 +579,6 @@ function renderCentroGestioneFinanze() {
 
             libEntrateFisse:
                 libEntrateFisse,
-
             libSalvadanaio:
                 libSalvadanaio,
 
@@ -578,7 +620,6 @@ function renderCentroGestioneFinanze() {
 
 
         return FinanzeConti.apriGestisciConto({
-
             libConti:
                 libConti,
 
@@ -599,7 +640,6 @@ function renderCentroGestioneFinanze() {
 
             libMovimentiSalvadanaio:
                 libMovimentiSalvadanaio,
-
             libRegistro:
                 libRegistro,
 
@@ -746,7 +786,6 @@ function renderCentroGestioneFinanze() {
             .button(
                 "＋ NUOVO CONTO"
             );
-
         btnNuovoConto.action(
             function() {
                 return apriNuovoConto();
@@ -768,6 +807,7 @@ function renderCentroGestioneFinanze() {
         elementi.push(
             ui()
                 .layout([
+
                     btnNuovoConto
                         .weight(1),
 
@@ -787,7 +827,6 @@ function renderCentroGestioneFinanze() {
         elementi.push(
             spazio(5)
         );
-
         elementi.push(
             testo(
                 "MOVIMENTI",
@@ -808,7 +847,6 @@ function renderCentroGestioneFinanze() {
                 return apriNuovaTransazione();
             }
         );
-
         var btnCheck =
             ui()
             .button(
@@ -830,6 +868,7 @@ function renderCentroGestioneFinanze() {
 
                     btnCheck
                         .weight(1)
+
                 ])
                 .horizontal()
                 .width_match_parent()
@@ -850,6 +889,7 @@ function renderCentroGestioneFinanze() {
         elementi.push(
             ui()
                 .layout([
+
                     btnVerificaEntrate
                         .weight(1)
 
@@ -932,7 +972,6 @@ function renderCentroGestioneFinanze() {
                 "bold"
             )
         );
-
         var btnNuovoSalvadanaio =
             ui()
             .button(
@@ -953,7 +992,7 @@ function renderCentroGestioneFinanze() {
 
         btnGestisciSalvadanaio.action(
             function() {
-                return false;
+                return apriGestisciSalvadanaio();
             }
         );
 
@@ -988,7 +1027,6 @@ function renderCentroGestioneFinanze() {
         elementi.push(
             spazio(4)
         );
-
         elementi.push(
             testo(
                 "SISTEMA",
