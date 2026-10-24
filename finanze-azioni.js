@@ -2,7 +2,7 @@
 // FINANZE
 // MODULO AZIONI OPERATIVE
 // FILE ESTERNO
-// VERSIONE 0.12-E
+// VERSIONE 0.13-F
 // ============================================================
 //
 // BASE:
@@ -20,6 +20,7 @@
 //
 // API PUBBLICA:
 // FinanzeAzioni.apriNuovaTransazione(contexto)
+// FinanzeAzioni.apriTrasferimentoConti(contexto)
 // FinanzeAzioni.apriNuovaSpesaFissa(contexto)
 // FinanzeAzioni.apriNuovaEntrataFissa(contexto)
 // FinanzeAzioni.apriCheckSaldo(contexto)
@@ -101,7 +102,6 @@ var FinanzeAzioni = (function() {
 
         libTransazioni =
             ctx.libTransazioni;
-
         libSpeseFisse =
             ctx.libSpeseFisse;
 
@@ -206,6 +206,7 @@ var FinanzeAzioni = (function() {
             "SI"
         );
     }
+
     function impostaEntrateVerificate(
         check,
         valore
@@ -246,7 +247,6 @@ var FinanzeAzioni = (function() {
     ) {
         var ta =
             timestampVoce(a);
-
         var tb =
             timestampVoce(b);
 
@@ -267,7 +267,6 @@ var FinanzeAzioni = (function() {
         if (ida < idb) {
             return -1;
         }
-
         if (ida > idb) {
             return 1;
         }
@@ -309,7 +308,6 @@ var FinanzeAzioni = (function() {
     // ========================================================
 
     function apriNuovaTransazione() {
-
         var listaConti =
             contiAttivi();
 
@@ -477,7 +475,6 @@ var FinanzeAzioni = (function() {
                         listaConti[
                             posizioneConto
                         ];
-
                     var posizioneTipo =
                         sceltaTipo.selected;
 
@@ -520,6 +517,7 @@ var FinanzeAzioni = (function() {
                                 importo
                             )
                         );
+
                     var momentoMovimento =
                         moment(
                             String(
@@ -539,7 +537,6 @@ var FinanzeAzioni = (function() {
                         tipo == "Entrata"
                             ? "Entrata Extra"
                             : "Altre Spese";
-
                     var nuovaTransazione =
                         libTransazioni.create({
 
@@ -595,7 +592,348 @@ var FinanzeAzioni = (function() {
 
 
     // ========================================================
-    // 7. NUOVA SPESA FISSA
+    // 7. TRASFERIMENTO TRA CONTI
+    // ========================================================
+
+    function apriTrasferimentoConti() {
+
+        var listaConti =
+            contiAttivi();
+        if (listaConti.length < 2) {
+            avviso(
+                "Trasferimento",
+                "Servono almeno due conti attivi."
+            );
+            return true;
+        }
+
+        var opzioniConti = [];
+
+        for (var i = 0; i < listaConti.length; i++) {
+            opzioniConti.push(
+                etichettaConto(
+                    listaConti[i]
+                )
+            );
+        }
+
+        var sceltaOrigine =
+            ui()
+            .choiceBox(
+                0,
+                opzioniConti
+            );
+
+        var sceltaDestinazione =
+            ui()
+            .choiceBox(
+                1,
+                opzioniConti
+            );
+
+        var campoImporto =
+            ui()
+            .edit(
+                ""
+            );
+
+        var campoDataOra =
+            ui()
+            .edit(
+                dataOraEditor(
+                    new Date()
+                        .getTime()
+                )
+            );
+
+        var campoDescrizione =
+            ui()
+            .edit(
+                ""
+            );
+
+        var vista =
+            ui()
+            .layout([
+
+                testo(
+                    "CONTO ORIGINE",
+                    10,
+                    BLU,
+                    "bold"
+                ),
+
+                sceltaOrigine,
+
+                spazio(6),
+
+                testo(
+                    "CONTO DESTINAZIONE",
+                    10,
+                    BLU,
+                    "bold"
+                ),
+
+                sceltaDestinazione,
+
+                spazio(6),
+
+                testo(
+                    "IMPORTO (€)",
+                    10,
+                    BLU,
+                    "bold"
+                ),
+
+                campoImporto,
+
+                spazio(6),
+
+                testo(
+                    "DATA E ORA",
+                    10,
+                    BLU,
+                    "bold"
+                ),
+
+                campoDataOra,
+
+                testo(
+                    "Formato: GG/MM/AAAA HH:mm",
+                    9,
+                    SECONDARIO
+                ),
+                spazio(6),
+
+                testo(
+                    "DESCRIZIONE",
+                    10,
+                    BLU,
+                    "bold"
+                ),
+
+                campoDescrizione
+
+            ])
+            .width_match_parent();
+
+        dialog()
+            .title(
+                "⇄ Trasferimento"
+            )
+            .view(
+                vista
+            )
+            .positiveButton(
+                "REGISTRA",
+                function() {
+
+                    var posizioneOrigine =
+                        sceltaOrigine.selected;
+
+                    var posizioneDestinazione =
+                        sceltaDestinazione.selected;
+
+                    if (
+                        posizioneOrigine < 0 ||
+                        posizioneOrigine >= listaConti.length ||
+                        posizioneDestinazione < 0 ||
+                        posizioneDestinazione >= listaConti.length
+                    ) {
+                        return false;
+                    }
+
+                    if (
+                        posizioneOrigine ==
+                        posizioneDestinazione
+                    ) {
+                        avviso(
+                            "Trasferimento",
+                            "Conto origine e conto destinazione devono essere diversi."
+                        );
+                        return false;
+                    }
+
+                    var contoOrigine =
+                        listaConti[posizioneOrigine];
+
+                    var contoDestinazione =
+                        listaConti[posizioneDestinazione];
+
+                    var importo =
+                        parseImporto(
+                            campoImporto.text
+                        );
+
+                    if (
+                        importo === null ||
+                        importo <= 0
+                    ) {
+                        return false;
+                    }
+
+                    importo =
+                        Math.abs(
+                            arrotonda2(
+                                importo
+                            )
+                        );
+
+                    var momentoMovimento =
+                        moment(
+                            String(
+                                campoDataOra.text || ""
+                            ).trim(),
+                            "DD/MM/YYYY HH:mm",
+                            true
+                        );
+
+                    if (
+                        !momentoMovimento.isValid()
+                    ) {
+                        return false;
+                    }
+
+                    var descrizione =
+                        String(
+                            campoDescrizione.text || ""
+                        )
+                        .trim();
+
+                    if (descrizione == "") {
+                        descrizione =
+                            "Trasferimento " +
+                            etichettaConto(
+                                contoOrigine
+                            ) +
+                            " → " +
+                            etichettaConto(
+                                contoDestinazione
+                            );
+                    }
+
+                    var timestamp =
+                        momentoMovimento
+                            .toDate()
+                            .getTime();
+
+                    var idOperazione =
+                        "TRF-" +
+                        String(
+                            new Date()
+                                .getTime()
+                        ) +
+                        "-" +
+                        String(
+                            contoOrigine.id || ""
+                        );
+
+                    var uscita =
+                        libTransazioni.create({
+                            "Transazione":
+                                "Trasferimento a " +
+                                etichettaConto(
+                                    contoDestinazione
+                                ),
+                            "Descrizione":
+                                descrizione,
+                            "Data e Ora":
+                                timestamp,
+                            "Importo":
+                                importo,
+                            "Tipo":
+                                "Uscita",
+                            "Categoria":
+                                "Trasferimento Interno",
+                            "Origine":
+                                "Manuale",
+                            "ID Operazione":
+                                idOperazione
+                        });
+
+                    if (!uscita) {
+                        avviso(
+                            "Trasferimento",
+                            "Impossibile creare la transazione di uscita."
+                        );
+                        return false;
+                    }
+
+                    uscita.link(
+                        "Conto",
+                        contoOrigine
+                    );
+
+                    var entrata =
+                        libTransazioni.create({
+                            "Transazione":
+                                "Trasferimento da " +
+                                etichettaConto(
+                                    contoOrigine
+                                ),
+                            "Descrizione":
+                                descrizione,
+                            "Data e Ora":
+                                timestamp,
+                            "Importo":
+                                importo,
+                            "Tipo":
+                                "Entrata",
+                            "Categoria":
+                                "Trasferimento Interno",
+                            "Origine":
+                                "Manuale",
+                            "ID Operazione":
+                                idOperazione
+                        });
+
+                    if (!entrata) {
+                        avviso(
+                            "Trasferimento incompleto",
+                            "È stata creata l'uscita ma non l'entrata. Correggi manualmente prima di proseguire."
+                        );
+                        return false;
+                    }
+
+                    entrata.link(
+                        "Conto",
+                        contoDestinazione
+                    );
+
+                    ricalcolaMotore();
+
+                    avviso(
+                        "Trasferimento registrato",
+                        formattaEuro(
+                            importo
+                        ) +
+                        "\n\n" +
+                        etichettaConto(
+                            contoOrigine
+                        ) +
+                        " → " +
+                        etichettaConto(
+                            contoDestinazione
+                        )
+                    );
+
+                    return true;
+                }
+            )
+            .negativeButton(
+                "ANNULLA",
+                function() {
+                    return true;
+                }
+            )
+            .show();
+
+        return false;
+    }
+
+
+    // ========================================================
+    // 8. NUOVA SPESA FISSA
     // ========================================================
 
     function apriNuovaSpesaFissa() {
@@ -666,6 +1004,7 @@ var FinanzeAzioni = (function() {
                 0,
                 opzioniCadenza
             );
+
         var campoPrimaScadenza =
             ui()
             .edit(
@@ -678,7 +1017,6 @@ var FinanzeAzioni = (function() {
         var vista =
             ui()
             .layout([
-
                 testo(
                     "CONTO",
                     10,
@@ -707,6 +1045,7 @@ var FinanzeAzioni = (function() {
                     BLU,
                     "bold"
                 ),
+
                 campoDescrizione,
 
                 spazio(6),
@@ -719,7 +1058,6 @@ var FinanzeAzioni = (function() {
                 ),
 
                 campoImporto,
-
                 spazio(6),
 
                 testo(
@@ -803,7 +1141,6 @@ var FinanzeAzioni = (function() {
                     ) {
                         return false;
                     }
-
                     importo =
                         Math.abs(
                             arrotonda2(
@@ -853,6 +1190,7 @@ var FinanzeAzioni = (function() {
 
                             "Nome Spesa":
                                 nome,
+
                             "Descrizione":
                                 descrizione,
 
@@ -886,7 +1224,6 @@ var FinanzeAzioni = (function() {
                             "Prossima Scadenza",
                             timestampScadenza
                         );
-
                         prossima =
                             timestampScadenza;
                     }
@@ -928,7 +1265,6 @@ var FinanzeAzioni = (function() {
                         ) {
                             stato =
                                 "🟠 DA PAGARE DOMANI";
-
                         } else {
                             stato =
                                 "🟢 TRA " +
@@ -958,6 +1294,7 @@ var FinanzeAzioni = (function() {
         return false;
     }
 
+
     // ========================================================
     // 8. NUOVA ENTRATA FISSA
     // ========================================================
@@ -969,7 +1306,6 @@ var FinanzeAzioni = (function() {
                 "Nuova Entrata Fissa",
                 "La libreria [■] Entrate Fisse non è accessibile."
             );
-
             return true;
         }
 
@@ -1032,7 +1368,6 @@ var FinanzeAzioni = (function() {
         var campoImporto =
             ui()
             .edit("");
-
         var sceltaCadenza =
             ui()
             .choiceBox(
@@ -1061,6 +1396,7 @@ var FinanzeAzioni = (function() {
                 ),
 
                 sceltaConto,
+
                 spazio(6),
 
                 testo(
@@ -1073,7 +1409,6 @@ var FinanzeAzioni = (function() {
                 campoNome,
 
                 spazio(6),
-
                 testo(
                     "DESCRIZIONE",
                     10,
@@ -1102,6 +1437,7 @@ var FinanzeAzioni = (function() {
                     BLU,
                     "bold"
                 ),
+
                 sceltaCadenza,
 
                 spazio(6),
@@ -1114,7 +1450,6 @@ var FinanzeAzioni = (function() {
                 ),
 
                 campoPrimaEntrata,
-
                 testo(
                     "Formato: GG/MM/AAAA",
                     9,
@@ -1135,7 +1470,6 @@ var FinanzeAzioni = (function() {
 
                     var posizioneConto =
                         sceltaConto.selected;
-
                     if (
                         posizioneConto < 0 ||
                         posizioneConto >=
@@ -1143,6 +1477,7 @@ var FinanzeAzioni = (function() {
                     ) {
                         return false;
                     }
+
                     var contoScelto =
                         listaConti[
                             posizioneConto
@@ -1163,6 +1498,7 @@ var FinanzeAzioni = (function() {
                             campoDescrizione.text || ""
                         )
                         .trim();
+
                     var importo =
                         parseImporto(
                             campoImporto.text
@@ -1238,7 +1574,6 @@ var FinanzeAzioni = (function() {
                                 timestampPrimaEntrata
 
                         });
-
                     if (!nuovaEntrata) {
                         return false;
                     }
@@ -1288,6 +1623,7 @@ var FinanzeAzioni = (function() {
                         if (giorni < 0) {
                             stato =
                                 "🔴 ENTRATA DA CONFERMARE";
+
                         } else if (
                             giorni == 0
                         ) {
@@ -1329,6 +1665,7 @@ var FinanzeAzioni = (function() {
         return false;
     }
 
+
     // ========================================================
     // 9. NUOVO CHECK SALDO
     // ========================================================
@@ -1362,7 +1699,6 @@ var FinanzeAzioni = (function() {
                 )
             );
         }
-
         var sceltaConto =
             ui()
             .choiceBox(
@@ -1664,6 +2000,7 @@ var FinanzeAzioni = (function() {
                 }
             )
             .show();
+
         return false;
     }
 
@@ -1705,6 +2042,7 @@ var FinanzeAzioni = (function() {
 
         var checkConto =
             [];
+
         for (
             var c = 0;
             c < tuttiCheck.length;
@@ -1759,7 +2097,6 @@ var FinanzeAzioni = (function() {
                 break;
             }
         }
-
         if (
             indiceCorrente < 0
         ) {
@@ -1767,6 +2104,7 @@ var FinanzeAzioni = (function() {
                 "Verifica Entrate",
                 "Impossibile individuare il Check nella sequenza del Conto."
             );
+
             return;
         }
 
@@ -1787,6 +2125,7 @@ var FinanzeAzioni = (function() {
                 "Stato di Riconciliazione",
                 "OK"
             );
+
             ricalcolaMotore();
 
             avviso(
@@ -1850,6 +2189,7 @@ var FinanzeAzioni = (function() {
             return;
         }
 
+
         function calcolaRiepilogo() {
 
             var momentoPrecedente =
@@ -1882,7 +2222,6 @@ var FinanzeAzioni = (function() {
 
             var entrate =
                 0;
-
             var uscite =
                 0;
 
@@ -1932,6 +2271,7 @@ var FinanzeAzioni = (function() {
                 if (!dataMovimento) {
                     continue;
                 }
+
                 var momentoMovimento =
                     moment(
                         dataMovimento
@@ -1994,6 +2334,7 @@ var FinanzeAzioni = (function() {
                 arrotonda2(
                     uscite
                 );
+
             var saldoAtteso =
                 arrotonda2(
                     saldoPrecedente +
@@ -2006,7 +2347,6 @@ var FinanzeAzioni = (function() {
                     saldoCorrente -
                     saldoAtteso
                 );
-
             return {
                 momentoPrecedente:
                     momentoPrecedente,
@@ -2140,6 +2480,7 @@ var FinanzeAzioni = (function() {
                 t +=
                     "\n\nNessuna differenza da giustificare.";
             }
+
             return t;
         }
 
@@ -2181,6 +2522,7 @@ var FinanzeAzioni = (function() {
                                 TESTO,
                                 "bold"
                             ),
+
                             campoNome,
 
                             spazio(5),
@@ -2193,7 +2535,6 @@ var FinanzeAzioni = (function() {
                             ),
 
                             campoImporto,
-
                             spazio(5),
 
                             testo(
@@ -2222,6 +2563,7 @@ var FinanzeAzioni = (function() {
                                 campoNome.text || ""
                             )
                             .trim();
+
                         var importo =
                             parseImporto(
                                 campoImporto.text
@@ -2234,7 +2576,6 @@ var FinanzeAzioni = (function() {
                         ) {
                             return false;
                         }
-
                         var momentoEntrata =
                             moment(
                                 String(
@@ -2242,6 +2583,7 @@ var FinanzeAzioni = (function() {
                                 ).trim(),
                                 "DD/MM/YYYY HH:mm",true
                             );
+
                         if (
                             !momentoEntrata.isValid()
                         ) {
@@ -2254,7 +2596,6 @@ var FinanzeAzioni = (function() {
                                     "Data e Ora"
                                 )
                             );
-
                         var limiteCorrente =
                             moment(
                                 checkCorrente.field(
@@ -2325,6 +2666,7 @@ var FinanzeAzioni = (function() {
 
                                 "Categoria":
                                     "Entrata Extra",
+
                                 "Origine":
                                     "Manuale"
 
@@ -2358,7 +2700,6 @@ var FinanzeAzioni = (function() {
                             ) +
                             "\n\nRiapri Verifica Entrate per controllare il nuovo riepilogo."
                         );
-
                         return true;
                     }
                 )
@@ -2450,6 +2791,7 @@ var FinanzeAzioni = (function() {
                             "Check riconciliato senza differenze."
                         );
                     }
+
                     return true;
                 }
             )
@@ -2504,7 +2846,6 @@ var FinanzeAzioni = (function() {
                         errore
                     )
                 );
-
             } else {
                 dialog()
                     .title(
@@ -2532,13 +2873,23 @@ var FinanzeAzioni = (function() {
     return {
 
         versione:
-            "0.12-E",
+            "0.13-F",
+
         apriNuovaTransazione:
             function(contexto) {
                 return esegui(
                     contexto,
                     "Nuova Transazione",
                     apriNuovaTransazione
+                );
+            },
+
+        apriTrasferimentoConti:
+            function(contexto) {
+                return esegui(
+                    contexto,
+                    "Trasferimento",
+                    apriTrasferimentoConti
                 );
             },
 
