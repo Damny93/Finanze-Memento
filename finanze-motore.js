@@ -1,110 +1,49 @@
+
 // ============================================================
 // FINANZE
 // MOTORE CENTRALE - RICALCOLO FINANZE
-// VERSIONE: 0.8.7 PRO - PROGRESSIVO MOVIMENTI SALVADANAIO
+// VERSIONE: 0.8.8 PRO - PROGRESSIVO BILANCIO LEGACY
 // ============================================================
 //
-// LIBRERIA:
-// [■] Transazioni
-//
-// TIPO:
-// Condiviso
-//
+// LIBRERIA: [■] Transazioni
+// TIPO: Condiviso
 // FUNZIONI PUBBLICHE:
-//
 //      ricalcolaFinanze()
 //      ricalcolaSalvadanai()
-//
-// BASE:
-//
-// 0.8.1 PRO - VERIFICATO
-//
-// ============================================================
+// BASE: 0.8.1 PRO - VERIFICATO
 //
 // NOVITÀ 0.8.4:
-//
-// - CENTRALIZZAZIONE SALDI PER CONTO.
-//
-// Ogni record di [■] Conti riceve:
-//
-//      Saldo Attuale
-//      Saldo Disponibile
-//
-// Saldo Disponibile =
-//
-//      Saldo Attuale
-//      - Salvadanaio già accantonato
-//      - Spese Fisse residue del mese
-//      - Accantonamenti ancora previsti
-//
-// - Funziona anche sui conti senza Check:
-//
-//      Saldo Iniziale + Transazioni.
-//
-// - Dashboard e widget possono leggere direttamente
-//   i valori centralizzati senza ricalcolarli.
-//
-// ============================================================
+// - Centralizzazione Saldo Attuale e Saldo Disponibile per conto.
+// - Disponibile = Attuale - Salvadanaio - Spese Fisse residue
+//   - Accantonamenti previsti.
+// - Fallback per conti senza Check: Saldo Iniziale + Transazioni.
 //
 // NOVITÀ 0.8.6:
-//
-// - Entrate Verificate è ora definitivamente un campo Testo.
-//
-// Valori:
-//
-//      SI
-//      NO
-//
-// - Il vecchio Booleano legacy non viene più letto
-//   né scritto dal motore.
-//
-// ============================================================
+// - Entrate Verificate: campo Testo con valori SI / NO.
 //
 // NOVITÀ 0.8.7:
+// - Saldo Progressivo e Saldo Progressivo Visualizzato nei
+//   Movimenti Salvadanaio, in ordine Data e Ora / ID.
 //
-// [■] Movimenti Salvadanaio riceve:
-//
-//      Saldo Progressivo
-//      Saldo Progressivo Visualizzato
-//
-// Il progressivo viene calcolato separatamente per
-// ogni singolo Salvadanaio:
-//
-//      Importo Iniziale
-//      + Accantonamento
-//      - Anticipo
-//      + Rimborso
-//
-// I movimenti vengono ordinati per:
-//
-//      Data e Ora
-//      ID come spareggio
-//
-// Formato visualizzato:
-//
-//      [ ⛃ 1.234,56 € ]
-//
-// ============================================================
+// NOVITÀ 0.8.8:
+// - Le transazioni legacy con Tipo = Bilancio e Categoria =
+//   Bilancio Iniziale sono incluse nella cronologia del conto.
+// - Ricevono i due campi Saldo Progressivo senza influire sul
+//   saldo: il loro Importo NON viene sommato né sottratto.
+// - Nessuna modifica alla riconciliazione o ai Salvadanai.
 //
 // LOGICA RICONCILIAZIONE:
-//
 // - Primo Check = baseline automatica.
 // - Check successivi = VERIFICA ENTRATE.
-// - Nessuna "Altra Spesa" viene creata finché
-//   "Entrate Verificate" non è SI.
+// - Nessuna Altra Spesa finché Entrate Verificate non è SI.
 // - Differenza positiva riapre il Check.
-// - Quando un Check viene chiuso in OK, tutte le
-//   transazioni dell'intervallo vengono collegate
-//   a quel Check in modo idempotente.
-//
+// - In stato OK le transazioni dell'intervallo vengono
+//   collegate al Check in modo idempotente.
 // ============================================================
 
-
 function versioneMotoreFinanze() {
-
-    return "0.8.7 PRO";
+    return "0.8.8 PRO";
 }
-
 
 function ricalcolaFinanze(
     libreriaSaldo,
@@ -114,4321 +53,1033 @@ function ricalcolaFinanze(
     libreriaSpeseFisseDashboard,
     libreriaSalvadanaioDashboard
 ) {
-
-
     // ========================================================
     // 1. CONTROLLO LIBRERIE
     // ========================================================
-
-    if (
-        !libreriaSaldo ||
-        !libreriaTransazioni ||
-        !libreriaConti ||
-        !libreriaDashboard ||
-        !libreriaSpeseFisseDashboard ||
-        !libreriaSalvadanaioDashboard
-    ) {
-
-        message(
-            "ERRORE v0.8.7: una o più librerie FINANZE non sono accessibili."
-        );
-
+    if (!libreriaSaldo || !libreriaTransazioni || !libreriaConti ||
+        !libreriaDashboard || !libreriaSpeseFisseDashboard ||
+        !libreriaSalvadanaioDashboard) {
+        message("ERRORE v0.8.8: una o più librerie FINANZE non sono accessibili.");
         return;
     }
-
 
     // ========================================================
     // 2. DATI GLOBALI
     // ========================================================
-
-    var tuttiCheck =
-        libreriaSaldo.entries();
-
-    var tutteTransazioni =
-        libreriaTransazioni.entries();
-
-    var tuttiConti =
-        libreriaConti.entries();
-
-    var tutteSpeseFisse =
-        libreriaSpeseFisseDashboard.entries();
-
-    var tuttiSalvadanai =
-        libreriaSalvadanaioDashboard.entries();
-
-
-    // Le riconciliazioni create durante l'esecuzione
-    // vengono aggiunte anche all'array locale.
-    var riconciliazioniCreate =
-        [];
-
+    var tuttiCheck = libreriaSaldo.entries();
+    var tutteTransazioni = libreriaTransazioni.entries();
+    var tuttiConti = libreriaConti.entries();
+    var tutteSpeseFisse = libreriaSpeseFisseDashboard.entries();
+    var tuttiSalvadanai = libreriaSalvadanaioDashboard.entries();
+    var riconciliazioniCreate = [];
 
     // ========================================================
     // 3. PERIODO CORRENTE
     // ========================================================
-
-    var momentoAdessoMotore =
-        moment();
-
-    var inizioMeseMotore =
-        moment(
-            momentoAdessoMotore
-        )
-        .startOf(
-            "month"
-        );
-
-    var fineMeseMotore =
-        moment(
-            momentoAdessoMotore
-        )
-        .endOf(
-            "month"
-        );
-
+    var momentoAdessoMotore = moment();
+    var inizioMeseMotore = moment(momentoAdessoMotore).startOf("month");
+    var fineMeseMotore = moment(momentoAdessoMotore).endOf("month");
 
     // ========================================================
     // 4. FUNZIONI COMUNI
     // ========================================================
-
-    function contieneConto(
-        collegamenti,
-        idConto
-    ) {
-
-        if (
-            !collegamenti ||
-            collegamenti.length == 0
-        ) {
-
-            return false;
+    function contieneConto(collegamenti, idConto) {
+        if (!collegamenti || collegamenti.length == 0) return false;
+        for (var i = 0; i < collegamenti.length; i++) {
+            if (collegamenti[i] && collegamenti[i].id == idConto) return true;
         }
-
-
-        for (
-            var i = 0;
-            i < collegamenti.length;
-            i++
-        ) {
-
-            if (
-                collegamenti[i] &&
-                collegamenti[i].id ==
-                idConto
-            ) {
-
-                return true;
-            }
-        }
-
-
         return false;
     }
 
-
-    function tempoVoce(
-        voce
-    ) {
-
-        var data =
-            voce.field(
-                "Data e Ora"
-            );
-
-
-        if (!data) {
-
-            return 0;
-        }
-
-
-        return moment(
-            data
-        )
-        .toDate()
-        .getTime();
+    function tempoVoce(voce) {
+        var data = voce.field("Data e Ora");
+        if (!data) return 0;
+        return moment(data).toDate().getTime();
     }
 
-
-    function ordinaCronologicamente(
-        a,
-        b
-    ) {
-
-        var tempoA =
-            tempoVoce(a);
-
-        var tempoB =
-            tempoVoce(b);
-
-
-        if (
-            tempoA < tempoB
-        ) {
-
-            return -1;
-        }
-
-
-        if (
-            tempoA > tempoB
-        ) {
-
-            return 1;
-        }
-
-
-        var idA =
-            String(
-                a.id || ""
-            );
-
-        var idB =
-            String(
-                b.id || ""
-            );
-
-
-        if (
-            idA < idB
-        ) {
-
-            return -1;
-        }
-
-
-        if (
-            idA > idB
-        ) {
-
-            return 1;
-        }
-
-
+    function ordinaCronologicamente(a, b) {
+        var tempoA = tempoVoce(a);
+        var tempoB = tempoVoce(b);
+        if (tempoA < tempoB) return -1;
+        if (tempoA > tempoB) return 1;
+        var idA = String(a.id || "");
+        var idB = String(b.id || "");
+        if (idA < idB) return -1;
+        if (idA > idB) return 1;
         return 0;
     }
 
-
-    function ordinaMovimentiCronologicamente(
-        a,
-        b
-    ) {
-
-        var tempoA =
-            tempoVoce(a);
-
-        var tempoB =
-            tempoVoce(b);
-
-
-        if (
-            tempoA < tempoB
-        ) {
-
-            return -1;
-        }
-
-
-        if (
-            tempoA > tempoB
-        ) {
-
-            return 1;
-        }
-
-
-        var aRettifica =
-            a.field("Origine") ==
-                "Calcolata" &&
-            a.field("Categoria") ==
-                "Altre Spese";
-
-        var bRettifica =
-            b.field("Origine") ==
-                "Calcolata" &&
-            b.field("Categoria") ==
-                "Altre Spese";
-
-
-        if (
-            aRettifica &&
-            !bRettifica
-        ) {
-
-            return 1;
-        }
-
-
-        if (
-            !aRettifica &&
-            bRettifica
-        ) {
-
-            return -1;
-        }
-
-
-        var idA =
-            String(
-                a.id || ""
-            );
-
-        var idB =
-            String(
-                b.id || ""
-            );
-
-
-        if (
-            idA < idB
-        ) {
-
-            return -1;
-        }
-
-
-        if (
-            idA > idB
-        ) {
-
-            return 1;
-        }
-
-
+    function ordinaMovimentiCronologicamente(a, b) {
+        var tempoA = tempoVoce(a);
+        var tempoB = tempoVoce(b);
+        if (tempoA < tempoB) return -1;
+        if (tempoA > tempoB) return 1;
+        var aRettifica = a.field("Origine") == "Calcolata" &&
+                         a.field("Categoria") == "Altre Spese";
+        var bRettifica = b.field("Origine") == "Calcolata" &&
+                         b.field("Categoria") == "Altre Spese";
+        if (aRettifica && !bRettifica) return 1;
+        if (!aRettifica && bRettifica) return -1;
+        var idA = String(a.id || "");
+        var idB = String(b.id || "");
+        if (idA < idB) return -1;
+        if (idA > idB) return 1;
         return 0;
     }
 
-
-    function arrotonda2(
-        valore
-    ) {
-
-        return Math.round(
-            Number(valore) *
-            100
-        ) / 100;
+    function arrotonda2(valore) {
+        return Math.round(Number(valore) * 100) / 100;
     }
-
 
     // ========================================================
     // 4A. ENTRATE VERIFICATE - CAMPO TESTO DEFINITIVO
-    // VERSIONE: 0.8.6+
     // ========================================================
-    //
-    // FONTE UNICA TECNICA:
-    //
-    //      Entrate Verificate
-    //
-    // Tipo:
-    //      Testo
-    //
-    // Valori:
-    //      SI
-    //      NO
-    //
-    // ========================================================
-
-    function leggiEntrateVerificate(
-        check
-    ) {
-
-        var valore =
-            String(
-                check.field(
-                    "Entrate Verificate"
-                ) || ""
-            )
-            .trim()
-            .toUpperCase();
-
-
-        return (
-            valore == "SI"
-        );
+    function leggiEntrateVerificate(check) {
+        var valore = String(check.field("Entrate Verificate") || "")
+            .trim().toUpperCase();
+        return valore == "SI";
     }
 
-
-    function scriviEntrateVerificate(
-        check,
-        valore
-    ) {
-
-        check.set(
-            "Entrate Verificate",
-            valore === true
-                ? "SI"
-                : "NO"
-        );
+    function scriviEntrateVerificate(check, valore) {
+        check.set("Entrate Verificate", valore === true ? "SI" : "NO");
     }
 
-
-    function dataNelMeseCorrente(
-        data
-    ) {
-
-        if (!data) {
-
-            return false;
-        }
-
-
-        var momento =
-            moment(
-                data
-            );
-
-
-        return (
-            !momento.isBefore(
-                inizioMeseMotore
-            ) &&
-            !momento.isAfter(
-                fineMeseMotore
-            )
-        );
+    function dataNelMeseCorrente(data) {
+        if (!data) return false;
+        var momento = moment(data);
+        return !momento.isBefore(inizioMeseMotore) &&
+               !momento.isAfter(fineMeseMotore);
     }
 
-
-    function formattaSaldoProgressivo(
-        valore
-    ) {
-
-        var numero =
-            Number(
-                valore
-            );
-
-
-        if (
-            !isFinite(
-                numero
-            )
-        ) {
-
-            return "";
-        }
-
-
-        var parti =
-            Math.abs(numero)
-            .toFixed(2)
-            .split(".");
-
-
-        var intero =
-            parti[0]
-            .replace(
-                /\B(?=(\d{3})+(?!\d))/g,
-                "."
-            );
-
-
-        var testo =
-            intero +
-            "," +
-            parti[1] +
-            " €";
-
-
-        if (
-            numero < 0
-        ) {
-
-            return (
-                "[ \u26C3 - " +
-                testo +
-                " ]"
-            );
-        }
-
-
-        return (
-            "[ \u26C3 " +
-            testo +
-            " ]"
-        );
+    function formattaSaldoProgressivo(valore) {
+        var numero = Number(valore);
+        if (!isFinite(numero)) return "";
+        var parti = Math.abs(numero).toFixed(2).split(".");
+        var intero = parti[0].replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+        var testo = intero + "," + parti[1] + " €";
+        if (numero < 0) return "[ \u26C3 - " + testo + " ]";
+        return "[ \u26C3 " + testo + " ]";
     }
-
 
     // ========================================================
     // 4B. SALVADANAIO DEL SINGOLO CONTO
     // ========================================================
-
-    function calcolaSalvadanaioConto(
-        conto
-    ) {
-
-        var totale =
-            0;
-
-
-        var idConto =
-            conto.id;
-
-
-        for (
-            var i = 0;
-            i < tuttiSalvadanai.length;
-            i++
-        ) {
-
-            var salvadanaio =
-                tuttiSalvadanai[i];
-
-
-            if (
-                !salvadanaio.field(
-                    "Attivo"
-                )
-            ) {
-
-                continue;
+    function calcolaSalvadanaioConto(conto) {
+        var totale = 0;
+        var idConto = conto.id;
+        for (var i = 0; i < tuttiSalvadanai.length; i++) {
+            var salvadanaio = tuttiSalvadanai[i];
+            if (!salvadanaio.field("Attivo")) continue;
+            if (!contieneConto(salvadanaio.field("Conto"), idConto)) continue;
+            var valoreEffettivo = Number(salvadanaio.field("Importo Effettivo"));
+            if (!isFinite(valoreEffettivo)) {
+                var nominale = Number(salvadanaio.field("Importo Salvadanaio"));
+                var anticipato = Number(salvadanaio.field("Anticipato"));
+                if (!isFinite(nominale)) nominale = 0;
+                if (!isFinite(anticipato)) anticipato = 0;
+                valoreEffettivo = nominale - anticipato;
             }
-
-
-            if (
-                !contieneConto(
-                    salvadanaio.field(
-                        "Conto"
-                    ),
-                    idConto
-                )
-            ) {
-
-                continue;
-            }
-
-
-            var valoreEffettivo =
-                Number(
-                    salvadanaio.field(
-                        "Importo Effettivo"
-                    )
-                );
-
-
-            if (
-                !isFinite(
-                    valoreEffettivo
-                )
-            ) {
-
-                var nominale =
-                    Number(
-                        salvadanaio.field(
-                            "Importo Salvadanaio"
-                        )
-                    );
-
-                var anticipato =
-                    Number(
-                        salvadanaio.field(
-                            "Anticipato"
-                        )
-                    );
-
-
-                if (
-                    !isFinite(
-                        nominale
-                    )
-                ) {
-
-                    nominale = 0;
-                }
-
-
-                if (
-                    !isFinite(
-                        anticipato
-                    )
-                ) {
-
-                    anticipato = 0;
-                }
-
-
-                valoreEffettivo =
-                    nominale -
-                    anticipato;
-            }
-
-
-            if (
-                valoreEffettivo < 0
-            ) {
-
-                valoreEffettivo = 0;
-            }
-
-
-            totale +=
-                valoreEffettivo;
+            if (valoreEffettivo < 0) valoreEffettivo = 0;
+            totale += valoreEffettivo;
         }
-
-
-        return arrotonda2(
-            totale
-        );
+        return arrotonda2(totale);
     }
-
 
     // ========================================================
     // 4C. SPESE FISSE RESIDUE DEL SINGOLO CONTO
     // ========================================================
-
-    function calcolaSpeseResidueConto(
-        conto
-    ) {
-
-        var totale =
-            0;
-
-
-        var idConto =
-            conto.id;
-
-
-        for (
-            var i = 0;
-            i < tutteSpeseFisse.length;
-            i++
-        ) {
-
-            var spesa =
-                tutteSpeseFisse[i];
-
-
-            if (
-                !contieneConto(
-                    spesa.field(
-                        "Conto"
-                    ),
-                    idConto
-                )
-            ) {
-
-                continue;
-            }
-
-
-            var prossimaScadenza =
-                spesa.field(
-                    "Prossima Scadenza"
-                ) ||
-                spesa.field(
-                    "Prima Scadenza"
-                );
-
-
-            if (
-                !dataNelMeseCorrente(
-                    prossimaScadenza
-                )
-            ) {
-
-                continue;
-            }
-
-
-            var importoRata =
-                Number(
-                    spesa.field(
-                        "Importo Rata"
-                    )
-                );
-
-
-            if (
-                !isFinite(
-                    importoRata
-                ) ||
-                importoRata <= 0
-            ) {
-
-                continue;
-            }
-
-
-            totale +=
-                importoRata;
+    function calcolaSpeseResidueConto(conto) {
+        var totale = 0;
+        var idConto = conto.id;
+        for (var i = 0; i < tutteSpeseFisse.length; i++) {
+            var spesa = tutteSpeseFisse[i];
+            if (!contieneConto(spesa.field("Conto"), idConto)) continue;
+            var prossimaScadenza = spesa.field("Prossima Scadenza") ||
+                                   spesa.field("Prima Scadenza");
+            if (!dataNelMeseCorrente(prossimaScadenza)) continue;
+            var importoRata = Number(spesa.field("Importo Rata"));
+            if (!isFinite(importoRata) || importoRata <= 0) continue;
+            totale += importoRata;
         }
-
-
-        return arrotonda2(
-            totale
-        );
+        return arrotonda2(totale);
     }
-
 
     // ========================================================
     // 4D. ACCANTONAMENTI ANCORA PREVISTI DEL CONTO
     // ========================================================
-
-    function calcolaAccantonamentiPrevistiConto(
-        conto
-    ) {
-
-        var totale =
-            0;
-
-
-        var idConto =
-            conto.id;
-
-
-        for (
-            var i = 0;
-            i < tuttiSalvadanai.length;
-            i++
-        ) {
-
-            var salvadanaio =
-                tuttiSalvadanai[i];
-
-
-            if (
-                !salvadanaio.field(
-                    "Attivo"
-                )
-            ) {
-
-                continue;
-            }
-
-
-            if (
-                !contieneConto(
-                    salvadanaio.field(
-                        "Conto"
-                    ),
-                    idConto
-                )
-            ) {
-
-                continue;
-            }
-
-
-            var modalita =
-                salvadanaio.field(
-                    "Modalità"
-                );
-
-
-            if (
-                modalita !=
-                    "Importo a paga" &&
-                modalita !=
-                    "Percentuale a paga"
-            ) {
-
-                continue;
-            }
-
-
-            var valoreRegola =
-                Number(
-                    salvadanaio.field(
-                        "Valore Regola"
-                    )
-                );
-
-
-            if (
-                !isFinite(
-                    valoreRegola
-                ) ||
-                valoreRegola <= 0
-            ) {
-
-                continue;
-            }
-
-
-            var entrateRiferimento =
-                salvadanaio.field(
-                    "Entrata di Riferimento"
-                );
-
-
-            if (
-                !entrateRiferimento ||
-                entrateRiferimento.length == 0
-            ) {
-
-                continue;
-            }
-
-
-            for (
-                var er = 0;
-                er < entrateRiferimento.length;
-                er++
-            ) {
-
-                var entrata =
-                    entrateRiferimento[er];
-
-
-                if (!entrata) {
-
-                    continue;
-                }
-
-
-                if (
-                    !contieneConto(
-                        entrata.field(
-                            "Conto"
-                        ),
-                        idConto
-                    )
-                ) {
-
-                    continue;
-                }
-
-
-                var prossimaEntrata =
-                    entrata.field(
-                        "Prossima Entrata"
-                    ) ||
-                    entrata.field(
-                        "Prima Entrata"
-                    );
-
-
-                if (
-                    !dataNelMeseCorrente(
-                        prossimaEntrata
-                    )
-                ) {
-
-                    continue;
-                }
-
-
-                var quota =
-                    0;
-
-
-                if (
-                    modalita ==
-                    "Importo a paga"
-                ) {
-
-                    quota =
-                        valoreRegola;
-
+    function calcolaAccantonamentiPrevistiConto(conto) {
+        var totale = 0;
+        var idConto = conto.id;
+        for (var i = 0; i < tuttiSalvadanai.length; i++) {
+            var salvadanaio = tuttiSalvadanai[i];
+            if (!salvadanaio.field("Attivo")) continue;
+            if (!contieneConto(salvadanaio.field("Conto"), idConto)) continue;
+            var modalita = salvadanaio.field("Modalità");
+            if (modalita != "Importo a paga" && modalita != "Percentuale a paga") continue;
+            var valoreRegola = Number(salvadanaio.field("Valore Regola"));
+            if (!isFinite(valoreRegola) || valoreRegola <= 0) continue;
+            var entrateRiferimento = salvadanaio.field("Entrata di Riferimento");
+            if (!entrateRiferimento || entrateRiferimento.length == 0) continue;
+            for (var er = 0; er < entrateRiferimento.length; er++) {
+                var entrata = entrateRiferimento[er];
+                if (!entrata) continue;
+                if (!contieneConto(entrata.field("Conto"), idConto)) continue;
+                var prossimaEntrata = entrata.field("Prossima Entrata") ||
+                                     entrata.field("Prima Entrata");
+                if (!dataNelMeseCorrente(prossimaEntrata)) continue;
+                var quota = 0;
+                if (modalita == "Importo a paga") {
+                    quota = valoreRegola;
                 } else {
-
-                    var importoPrevisto =
-                        Number(
-                            entrata.field(
-                                "Importo Previsto"
-                            )
-                        );
-
-
-                    if (
-                        !isFinite(
-                            importoPrevisto
-                        ) ||
-                        importoPrevisto <= 0
-                    ) {
-
-                        continue;
-                    }
-
-
-                    quota =
-                        importoPrevisto *
-                        valoreRegola /
-                        100;
+                    var importoPrevisto = Number(entrata.field("Importo Previsto"));
+                    if (!isFinite(importoPrevisto) || importoPrevisto <= 0) continue;
+                    quota = importoPrevisto * valoreRegola / 100;
                 }
-
-
-                if (
-                    isFinite(
-                        quota
-                    ) &&
-                    quota > 0
-                ) {
-
-                    totale +=
-                        quota;
-                }
+                if (isFinite(quota) && quota > 0) totale += quota;
             }
         }
-
-
-        return arrotonda2(
-            totale
-        );
+        return arrotonda2(totale);
     }
-
 
     // ========================================================
     // 4E. SALDO DISPONIBILE CENTRALIZZATO
     // ========================================================
-
-    function calcolaSaldoDisponibileConto(
-        conto,
-        saldoAttuale
-    ) {
-
-        if (
-            !isFinite(
-                saldoAttuale
-            )
-        ) {
-
-            return null;
-        }
-
-
-        var salvadanaio =
-            calcolaSalvadanaioConto(
-                conto
-            );
-
-
-        var speseResidue =
-            calcolaSpeseResidueConto(
-                conto
-            );
-
-
-        var accantonamentiPrevisti =
-            calcolaAccantonamentiPrevistiConto(
-                conto
-            );
-
-
-        return arrotonda2(
-            saldoAttuale -
-            salvadanaio -
-            speseResidue -
-            accantonamentiPrevisti
-        );
+    function calcolaSaldoDisponibileConto(conto, saldoAttuale) {
+        if (!isFinite(saldoAttuale)) return null;
+        var salvadanaio = calcolaSalvadanaioConto(conto);
+        var speseResidue = calcolaSpeseResidueConto(conto);
+        var accantonamentiPrevisti = calcolaAccantonamentiPrevistiConto(conto);
+        return arrotonda2(saldoAttuale - salvadanaio - speseResidue - accantonamentiPrevisti);
     }
-
 
     // ========================================================
     // 4F. NORMALIZZAZIONE CHECK RICONCILIAZIONE
     // ========================================================
-
-    function normalizzaCheckRiconciliazione(
-        movimento,
-        checkCorretto
-    ) {
-
-        var collegamenti =
-            movimento.field(
-                "Check Riconciliazione"
-            );
-
-
-        if (
-            collegamenti &&
-            collegamenti.length == 1 &&
-            collegamenti[0].id ==
-                checkCorretto.id
-        ) {
-
-            return;
-        }
-
-
-        if (
-            collegamenti &&
-            collegamenti.length > 0
-        ) {
-
-            for (
-                var rc =
-                    collegamenti.length - 1;
-                rc >= 0;
-                rc--
-            ) {
-
-                movimento.unlink(
-                    "Check Riconciliazione",
-                    collegamenti[rc]
-                );
+    function normalizzaCheckRiconciliazione(movimento, checkCorretto) {
+        var collegamenti = movimento.field("Check Riconciliazione");
+        if (collegamenti && collegamenti.length == 1 &&
+            collegamenti[0].id == checkCorretto.id) return;
+        if (collegamenti && collegamenti.length > 0) {
+            for (var rc = collegamenti.length - 1; rc >= 0; rc--) {
+                movimento.unlink("Check Riconciliazione", collegamenti[rc]);
             }
         }
-
-
-        movimento.link(
-            "Check Riconciliazione",
-            checkCorretto
-        );
+        movimento.link("Check Riconciliazione", checkCorretto);
     }
 
-
-    function collegaMovimentiIntervallo(
-        checkPrecedente,
-        checkCorrente,
-        idConto
-    ) {
-
-        var dataPrecedente =
-            checkPrecedente.field(
-                "Data e Ora"
-            );
-
-        var dataCorrente =
-            checkCorrente.field(
-                "Data e Ora"
-            );
-
-
-        if (
-            !dataPrecedente ||
-            !dataCorrente
-        ) {
-
-            return;
-        }
-
-
-        var momentoPrecedente =
-            moment(
-                dataPrecedente
-            );
-
-        var momentoCorrente =
-            moment(
-                dataCorrente
-            );
-
-
-        for (
-            var cr = 0;
-            cr < tutteTransazioni.length;
-            cr++
-        ) {
-
-            var movimento =
-                tutteTransazioni[cr];
-
-
-            if (
-                !contieneConto(
-                    movimento.field(
-                        "Conto"
-                    ),
-                    idConto
-                )
-            ) {
-
-                continue;
-            }
-
-
-            var dataMovimento =
-                movimento.field(
-                    "Data e Ora"
-                );
-
-
-            if (!dataMovimento) {
-
-                continue;
-            }
-
-
-            var momentoMovimento =
-                moment(
-                    dataMovimento
-                );
-
-
-            if (
-                !momentoMovimento.isAfter(
-                    momentoPrecedente
-                ) ||
-                momentoMovimento.isAfter(
-                    momentoCorrente
-                )
-            ) {
-
-                continue;
-            }
-
-
-            normalizzaCheckRiconciliazione(
-                movimento,
-                checkCorrente
-            );
+    function collegaMovimentiIntervallo(checkPrecedente, checkCorrente, idConto) {
+        var dataPrecedente = checkPrecedente.field("Data e Ora");
+        var dataCorrente = checkCorrente.field("Data e Ora");
+        if (!dataPrecedente || !dataCorrente) return;
+        var momentoPrecedente = moment(dataPrecedente);
+        var momentoCorrente = moment(dataCorrente);
+        for (var cr = 0; cr < tutteTransazioni.length; cr++) {
+            var movimento = tutteTransazioni[cr];
+            if (!contieneConto(movimento.field("Conto"), idConto)) continue;
+            var dataMovimento = movimento.field("Data e Ora");
+            if (!dataMovimento) continue;
+            var momentoMovimento = moment(dataMovimento);
+            if (!momentoMovimento.isAfter(momentoPrecedente) ||
+                momentoMovimento.isAfter(momentoCorrente)) continue;
+            normalizzaCheckRiconciliazione(movimento, checkCorrente);
         }
     }
-
 
     // ========================================================
     // 5. CICLO DI RICOSTRUZIONE CONTI
     // ========================================================
-
-    for (
-        var indiceConto = 0;
-        indiceConto < tuttiConti.length;
-        indiceConto++
-    ) {
-
-        var conto =
-            tuttiConti[
-                indiceConto
-            ];
-
-
-        var idConto =
-            conto.id;
-
-
-        if (
-            idConto == null
-        ) {
-
-            continue;
-        }
-
-
-        var collegamentoConto =
-            conto;
-
+    for (var indiceConto = 0; indiceConto < tuttiConti.length; indiceConto++) {
+        var conto = tuttiConti[indiceConto];
+        var idConto = conto.id;
+        if (idConto == null) continue;
+        var collegamentoConto = conto;
 
         // ====================================================
         // 5A. CHECK DEL CONTO
         // ====================================================
-
-        var checkContoOrdinati =
-            [];
-
-
-        for (
-            var cc = 0;
-            cc < tuttiCheck.length;
-            cc++
-        ) {
-
-            var checkConto =
-                tuttiCheck[cc];
-
-
-            if (
-                !contieneConto(
-                    checkConto.field(
-                        "Conto"
-                    ),
-                    idConto
-                )
-            ) {
-
-                continue;
-            }
-
-
-            if (
-                !checkConto.field(
-                    "Data e Ora"
-                )
-            ) {
-
-                continue;
-            }
-
-
-            checkContoOrdinati.push(
-                checkConto
-            );
+        var checkContoOrdinati = [];
+        for (var cc = 0; cc < tuttiCheck.length; cc++) {
+            var checkConto = tuttiCheck[cc];
+            if (!contieneConto(checkConto.field("Conto"), idConto)) continue;
+            if (!checkConto.field("Data e Ora")) continue;
+            checkContoOrdinati.push(checkConto);
         }
-
-
-        checkContoOrdinati.sort(
-            ordinaCronologicamente
-        );
-
+        checkContoOrdinati.sort(ordinaCronologicamente);
 
         // ====================================================
         // 5B. PRIMO CHECK
         // ====================================================
-
-        if (
-            checkContoOrdinati.length > 0
-        ) {
-
-            var primoCheck =
-                checkContoOrdinati[0];
-
-
-            scriviEntrateVerificate(
-                primoCheck,
-                true
-            );
-
-
-            primoCheck.set(
-                "Differenza da giustificare",
-                0
-            );
-
-
-            primoCheck.set(
-                "Stato di Riconciliazione",
-                "OK"
-            );
+        if (checkContoOrdinati.length > 0) {
+            var primoCheck = checkContoOrdinati[0];
+            scriviEntrateVerificate(primoCheck, true);
+            primoCheck.set("Differenza da giustificare", 0);
+            primoCheck.set("Stato di Riconciliazione", "OK");
         }
-
 
         // ====================================================
         // 5C. RICONCILIAZIONE DAL SECONDO CHECK
         // ====================================================
-
-        for (
-            var q = 1;
-            q < checkContoOrdinati.length;
-            q++
-        ) {
-
-            var checkPrecedente =
-                checkContoOrdinati[
-                    q - 1
-                ];
-
-            var checkCorrente =
-                checkContoOrdinati[q];
-
-
-            var dataPrecedente =
-                checkPrecedente.field(
-                    "Data e Ora"
-                );
-
-            var dataCorrente =
-                checkCorrente.field(
-                    "Data e Ora"
-                );
-
-
-            if (
-                !dataPrecedente ||
-                !dataCorrente
-            ) {
-
-                continue;
-            }
-
-
-            var momentoPrecedente =
-                moment(
-                    dataPrecedente
-                );
-
-            var momentoCorrente =
-                moment(
-                    dataCorrente
-                );
-
-            var timestampCorrente =
-                momentoCorrente
-                .toDate()
-                .getTime();
-
-
-            var saldoPrecedente =
-                Number(
-                    checkPrecedente.field(
-                        "Disponibilità Netta"
-                    )
-                );
-
-            var saldoCorrente =
-                Number(
-                    checkCorrente.field(
-                        "Disponibilità Netta"
-                    )
-                );
-
-
-            if (
-                !isFinite(
-                    saldoPrecedente
-                ) ||
-                !isFinite(
-                    saldoCorrente
-                )
-            ) {
-
-                continue;
-            }
-
+        for (var q = 1; q < checkContoOrdinati.length; q++) {
+            var checkPrecedente = checkContoOrdinati[q - 1];
+            var checkCorrente = checkContoOrdinati[q];
+            var dataPrecedente = checkPrecedente.field("Data e Ora");
+            var dataCorrente = checkCorrente.field("Data e Ora");
+            if (!dataPrecedente || !dataCorrente) continue;
+            var momentoPrecedente = moment(dataPrecedente);
+            var momentoCorrente = moment(dataCorrente);
+            var timestampCorrente = momentoCorrente.toDate().getTime();
+            var saldoPrecedente = Number(checkPrecedente.field("Disponibilità Netta"));
+            var saldoCorrente = Number(checkCorrente.field("Disponibilità Netta"));
+            if (!isFinite(saldoPrecedente) || !isFinite(saldoCorrente)) continue;
 
             // ================================================
             // 5D. CERCA RICONCILIAZIONE DEL CHECK
             // ================================================
-
-            var riconciliazione =
-                null;
-
-
-            for (
-                var r = 0;
-                r < tutteTransazioni.length;
-                r++
-            ) {
-
-                var transazioneR =
-                    tutteTransazioni[r];
-
-
-                if (
-                    transazioneR.field(
-                        "Origine"
-                    ) != "Calcolata" ||
-                    transazioneR.field(
-                        "Categoria"
-                    ) != "Altre Spese"
-                ) {
-
-                    continue;
-                }
-
-
-                if (
-                    !contieneConto(
-                        transazioneR.field(
-                            "Conto"
-                        ),
-                        idConto
-                    )
-                ) {
-
-                    continue;
-                }
-
-
-                var checkOrigineR =
-                    transazioneR.field(
-                        "Check Riconciliazione"
-                    );
-
-
-                var appartiene =
-                    false;
-
-
-                if (
-                    checkOrigineR &&
-                    checkOrigineR.length > 0
-                ) {
-
-                    for (
-                        var ro = 0;
-                        ro < checkOrigineR.length;
-                        ro++
-                    ) {
-
-                        if (
-                            checkOrigineR[ro].id ==
-                            checkCorrente.id
-                        ) {
-
-                            appartiene =
-                                true;
-
+            var riconciliazione = null;
+            for (var r = 0; r < tutteTransazioni.length; r++) {
+                var transazioneR = tutteTransazioni[r];
+                if (transazioneR.field("Origine") != "Calcolata" ||
+                    transazioneR.field("Categoria") != "Altre Spese") continue;
+                if (!contieneConto(transazioneR.field("Conto"), idConto)) continue;
+                var checkOrigineR = transazioneR.field("Check Riconciliazione");
+                var appartiene = false;
+                if (checkOrigineR && checkOrigineR.length > 0) {
+                    for (var ro = 0; ro < checkOrigineR.length; ro++) {
+                        if (checkOrigineR[ro].id == checkCorrente.id) {
+                            appartiene = true;
                             break;
                         }
                     }
                 }
-
-
-                // ============================================
-                // RECUPERO LEGACY
-                // ============================================
-
-                if (
-                    !appartiene &&
-                    (
-                        !checkOrigineR ||
-                        checkOrigineR.length == 0
-                    )
-                ) {
-
-                    var dataR =
-                        transazioneR.field(
-                            "Data e Ora"
-                        );
-
-
+                // Recupero legacy
+                if (!appartiene && (!checkOrigineR || checkOrigineR.length == 0)) {
+                    var dataR = transazioneR.field("Data e Ora");
                     if (dataR) {
-
-                        var timestampR =
-                            moment(
-                                dataR
-                            )
-                            .toDate()
-                            .getTime();
-
-
-                        if (
-                            timestampR ==
-                            timestampCorrente
-                        ) {
-
-                            appartiene =
-                                true;
-
-
-                            transazioneR.link(
-                                "Check Riconciliazione",
-                                checkCorrente
-                            );
+                        var timestampR = moment(dataR).toDate().getTime();
+                        if (timestampR == timestampCorrente) {
+                            appartiene = true;
+                            transazioneR.link("Check Riconciliazione", checkCorrente);
                         }
                     }
                 }
-
-
-                if (
-                    appartiene
-                ) {
-
-                    riconciliazione =
-                        transazioneR;
-
+                if (appartiene) {
+                    riconciliazione = transazioneR;
                     break;
                 }
             }
 
-
             // ================================================
             // 5E. MOVIMENTI REALI NELL'INTERVALLO
             // ================================================
-
-            var entrateIntervallo =
-                0;
-
-            var usciteIntervallo =
-                0;
-
-
-            for (
-                var m = 0;
-                m < tutteTransazioni.length;
-                m++
-            ) {
-
-                var movimento =
-                    tutteTransazioni[m];
-
-
-                var origineMovimento =
-                    movimento.field(
-                        "Origine"
-                    );
-
-                var categoriaMovimento =
-                    movimento.field(
-                        "Categoria"
-                    );
-
-
-                if (
-                    origineMovimento ==
-                        "Calcolata" &&
-                    categoriaMovimento ==
-                        "Altre Spese"
-                ) {
-
-                    continue;
-                }
-
-
-                if (
-                    !contieneConto(
-                        movimento.field(
-                            "Conto"
-                        ),
-                        idConto
-                    )
-                ) {
-
-                    continue;
-                }
-
-
-                var dataMovimento =
-                    movimento.field(
-                        "Data e Ora"
-                    );
-
-
-                if (!dataMovimento) {
-
-                    continue;
-                }
-
-
-                var momentoMovimento =
-                    moment(
-                        dataMovimento
-                    );
-
-
-                if (
-                    !momentoMovimento.isAfter(
-                        momentoPrecedente
-                    )
-                ) {
-
-                    continue;
-                }
-
-
-                if (
-                    momentoMovimento.isAfter(
-                        momentoCorrente
-                    )
-                ) {
-
-                    continue;
-                }
-
-
-                var importoMovimento =
-                    Number(
-                        movimento.field(
-                            "Importo"
-                        )
-                    );
-
-
-                if (
-                    !isFinite(
-                        importoMovimento
-                    )
-                ) {
-
-                    continue;
-                }
-
-
-                var tipoMovimento =
-                    movimento.field(
-                        "Tipo"
-                    );
-
-
-                if (
-                    tipoMovimento ==
-                    "Entrata"
-                ) {
-
-                    entrateIntervallo +=
-                        importoMovimento;
-
-                } else if (
-                    tipoMovimento ==
-                    "Uscita"
-                ) {
-
-                    usciteIntervallo +=
-                        importoMovimento;
-                }
+            var entrateIntervallo = 0;
+            var usciteIntervallo = 0;
+            for (var m = 0; m < tutteTransazioni.length; m++) {
+                var movimento = tutteTransazioni[m];
+                var origineMovimento = movimento.field("Origine");
+                var categoriaMovimento = movimento.field("Categoria");
+                if (origineMovimento == "Calcolata" &&
+                    categoriaMovimento == "Altre Spese") continue;
+                if (!contieneConto(movimento.field("Conto"), idConto)) continue;
+                var dataMovimento = movimento.field("Data e Ora");
+                if (!dataMovimento) continue;
+                var momentoMovimento = moment(dataMovimento);
+                if (!momentoMovimento.isAfter(momentoPrecedente)) continue;
+                if (momentoMovimento.isAfter(momentoCorrente)) continue;
+                var importoMovimento = Number(movimento.field("Importo"));
+                if (!isFinite(importoMovimento)) continue;
+                var tipoMovimento = movimento.field("Tipo");
+                if (tipoMovimento == "Entrata") entrateIntervallo += importoMovimento;
+                else if (tipoMovimento == "Uscita") usciteIntervallo += importoMovimento;
             }
-
-
-            entrateIntervallo =
-                arrotonda2(
-                    entrateIntervallo
-                );
-
-            usciteIntervallo =
-                arrotonda2(
-                    usciteIntervallo
-                );
-
+            entrateIntervallo = arrotonda2(entrateIntervallo);
+            usciteIntervallo = arrotonda2(usciteIntervallo);
 
             // ================================================
             // 5F. DIFFERENZA
             // ================================================
-
-            var saldoAtteso =
-                arrotonda2(
-                    saldoPrecedente +
-                    entrateIntervallo -
-                    usciteIntervallo
-                );
-
-
-            var differenza =
-                arrotonda2(
-                    saldoCorrente -
-                    saldoAtteso
-                );
-
+            var saldoAtteso = arrotonda2(saldoPrecedente + entrateIntervallo - usciteIntervallo);
+            var differenza = arrotonda2(saldoCorrente - saldoAtteso);
 
             // ================================================
             // 5G. BLOCCO DI VERIFICA ENTRATE
             // ================================================
-
-            var precedenteVerificato =
-                leggiEntrateVerificate(
-                    checkPrecedente
-                );
-
-            var statoPrecedente =
-                checkPrecedente.field(
-                    "Stato di Riconciliazione"
-                );
-
-
-            if (
-                !precedenteVerificato ||
-                statoPrecedente != "OK"
-            ) {
-
-                if (
-                    riconciliazione
-                ) {
-
-                    riconciliazione.set(
-                        "Importo",
-                        0
-                    );
-                }
-
-
-                scriviEntrateVerificate(
-                    checkCorrente,
-                    false
-                );
-
-                checkCorrente.set(
-                    "Differenza da giustificare",
-                    differenza
-                );
-
-                checkCorrente.set(
-                    "Stato di Riconciliazione",
-                    "CHECK PRECEDENTE DA CHIUDERE"
-                );
-
+            var precedenteVerificato = leggiEntrateVerificate(checkPrecedente);
+            var statoPrecedente = checkPrecedente.field("Stato di Riconciliazione");
+            if (!precedenteVerificato || statoPrecedente != "OK") {
+                if (riconciliazione) riconciliazione.set("Importo", 0);
+                scriviEntrateVerificate(checkCorrente, false);
+                checkCorrente.set("Differenza da giustificare", differenza);
+                checkCorrente.set("Stato di Riconciliazione", "CHECK PRECEDENTE DA CHIUDERE");
                 continue;
             }
 
-
-            var entrateVerificate =
-                leggiEntrateVerificate(
-                    checkCorrente
-                );
-
-
-            if (
-                !entrateVerificate
-            ) {
-
-                if (
-                    riconciliazione
-                ) {
-
-                    riconciliazione.set(
-                        "Importo",
-                        0
-                    );
-                }
-
-
-                checkCorrente.set(
-                    "Differenza da giustificare",
-                    differenza
-                );
-
-
-                var statoCorrente =
-                    checkCorrente.field(
-                        "Stato di Riconciliazione"
-                    );
-
-
-                if (
-                    differenza > 0 &&
-                    statoCorrente ==
-                        "ENTRATE DA REGISTRARE"
-                ) {
-
-                    checkCorrente.set(
-                        "Stato di Riconciliazione",
-                        "ENTRATE DA REGISTRARE"
-                    );
-
+            var entrateVerificate = leggiEntrateVerificate(checkCorrente);
+            if (!entrateVerificate) {
+                if (riconciliazione) riconciliazione.set("Importo", 0);
+                checkCorrente.set("Differenza da giustificare", differenza);
+                var statoCorrente = checkCorrente.field("Stato di Riconciliazione");
+                if (differenza > 0 && statoCorrente == "ENTRATE DA REGISTRARE") {
+                    checkCorrente.set("Stato di Riconciliazione", "ENTRATE DA REGISTRARE");
                 } else {
-
-                    checkCorrente.set(
-                        "Stato di Riconciliazione",
-                        "VERIFICA ENTRATE"
-                    );
+                    checkCorrente.set("Stato di Riconciliazione", "VERIFICA ENTRATE");
                 }
-
-
                 continue;
             }
-
 
             // ================================================
             // 5H. DIFFERENZA NEGATIVA
             // ================================================
-
-            if (
-                differenza < 0
-            ) {
-
-                var importoAltreSpese =
-                    arrotonda2(
-                        Math.abs(
-                            differenza
-                        )
-                    );
-
-
-                if (
-                    riconciliazione
-                ) {
-
-                    riconciliazione.set(
-                        "Transazione",
-                        "Altre Spese"
-                    );
-
-                    riconciliazione.set(
-                        "Descrizione",
-                        "Altre Spese"
-                    );
-
-                    riconciliazione.set(
-                        "Data e Ora",
-                        timestampCorrente
-                    );
-
-                    riconciliazione.set(
-                        "Importo",
-                        importoAltreSpese
-                    );
-
-                    riconciliazione.set(
-                        "Tipo",
-                        "Uscita"
-                    );
-
-                    riconciliazione.set(
-                        "Categoria",
-                        "Altre Spese"
-                    );
-
-                    riconciliazione.set(
-                        "Origine",
-                        "Calcolata"
-                    );
-
-
-                    if (
-                        !contieneConto(
-                            riconciliazione.field(
-                                "Conto"
-                            ),
-                            idConto
-                        )
-                    ) {
-
-                        riconciliazione.link(
-                            "Conto",
-                            collegamentoConto
-                        );
-                    }
-
-
-                    if (
-                        !contieneConto(
-                            riconciliazione.field(
-                                "Check Riconciliazione"
-                            ),
-                            checkCorrente.id
-                        )
-                    ) {
-
-                        riconciliazione.link(
-                            "Check Riconciliazione",
-                            checkCorrente
-                        );
-                    }
-
+            if (differenza < 0) {
+                var importoAltreSpese = arrotonda2(Math.abs(differenza));
+                if (riconciliazione) {
+                    riconciliazione.set("Transazione", "Altre Spese");
+                    riconciliazione.set("Descrizione", "Altre Spese");
+                    riconciliazione.set("Data e Ora", timestampCorrente);
+                    riconciliazione.set("Importo", importoAltreSpese);
+                    riconciliazione.set("Tipo", "Uscita");
+                    riconciliazione.set("Categoria", "Altre Spese");
+                    riconciliazione.set("Origine", "Calcolata");
+                    if (!contieneConto(riconciliazione.field("Conto"), idConto))
+                        riconciliazione.link("Conto", collegamentoConto);
+                    if (!contieneConto(riconciliazione.field("Check Riconciliazione"), checkCorrente.id))
+                        riconciliazione.link("Check Riconciliazione", checkCorrente);
                 } else {
-
-                    var nuovaRiconciliazione =
-                        libreriaTransazioni.create({
-
-                            "Transazione":
-                                "Altre Spese",
-
-                            "Descrizione":
-                                "Altre Spese",
-
-                            "Data e Ora":
-                                timestampCorrente,
-
-                            "Importo":
-                                importoAltreSpese,
-
-                            "Tipo":
-                                "Uscita",
-
-                            "Categoria":
-                                "Altre Spese",
-
-                            "Origine":
-                                "Calcolata"
-
-                        });
-
-
-                    if (
-                        nuovaRiconciliazione
-                    ) {
-
-                        nuovaRiconciliazione.link(
-                            "Conto",
-                            collegamentoConto
-                        );
-
-                        nuovaRiconciliazione.link(
-                            "Check Riconciliazione",
-                            checkCorrente
-                        );
-
-
-                        riconciliazioniCreate.push(
-                            nuovaRiconciliazione
-                        );
-
-                        tutteTransazioni.push(
-                            nuovaRiconciliazione
-                        );
+                    var nuovaRiconciliazione = libreriaTransazioni.create({
+                        "Transazione": "Altre Spese",
+                        "Descrizione": "Altre Spese",
+                        "Data e Ora": timestampCorrente,
+                        "Importo": importoAltreSpese,
+                        "Tipo": "Uscita",
+                        "Categoria": "Altre Spese",
+                        "Origine": "Calcolata"
+                    });
+                    if (nuovaRiconciliazione) {
+                        nuovaRiconciliazione.link("Conto", collegamentoConto);
+                        nuovaRiconciliazione.link("Check Riconciliazione", checkCorrente);
+                        riconciliazioniCreate.push(nuovaRiconciliazione);
+                        tutteTransazioni.push(nuovaRiconciliazione);
                     }
                 }
-
-
-                scriviEntrateVerificate(
-                    checkCorrente,
-                    true
-                );
-
-                checkCorrente.set(
-                    "Differenza da giustificare",
-                    0
-                );
-
-                checkCorrente.set(
-                    "Stato di Riconciliazione",
-                    "OK"
-                );
+                scriviEntrateVerificate(checkCorrente, true);
+                checkCorrente.set("Differenza da giustificare", 0);
+                checkCorrente.set("Stato di Riconciliazione", "OK");
             }
-
 
             // ================================================
             // 5I. DIFFERENZA POSITIVA
             // ================================================
-
-            else if (
-                differenza > 0
-            ) {
-
-                if (
-                    riconciliazione
-                ) {
-
-                    riconciliazione.set(
-                        "Importo",
-                        0
-                    );
-
-
-                    if (
-                        !contieneConto(
-                            riconciliazione.field(
-                                "Check Riconciliazione"
-                            ),
-                            checkCorrente.id
-                        )
-                    ) {
-
-                        riconciliazione.link(
-                            "Check Riconciliazione",
-                            checkCorrente
-                        );
-                    }
+            else if (differenza > 0) {
+                if (riconciliazione) {
+                    riconciliazione.set("Importo", 0);
+                    if (!contieneConto(riconciliazione.field("Check Riconciliazione"), checkCorrente.id))
+                        riconciliazione.link("Check Riconciliazione", checkCorrente);
                 }
-
-
-                scriviEntrateVerificate(
-                    checkCorrente,
-                    false
-                );
-
-                checkCorrente.set(
-                    "Differenza da giustificare",
-                    differenza
-                );
-
-                checkCorrente.set(
-                    "Stato di Riconciliazione",
-                    "ENTRATE DA REGISTRARE"
-                );
+                scriviEntrateVerificate(checkCorrente, false);
+                checkCorrente.set("Differenza da giustificare", differenza);
+                checkCorrente.set("Stato di Riconciliazione", "ENTRATE DA REGISTRARE");
             }
-
 
             // ================================================
             // 5J. DIFFERENZA ZERO
             // ================================================
-
             else {
-
-                if (
-                    riconciliazione
-                ) {
-
-                    riconciliazione.set(
-                        "Importo",
-                        0
-                    );
-
-
-                    if (
-                        !contieneConto(
-                            riconciliazione.field(
-                                "Check Riconciliazione"
-                            ),
-                            checkCorrente.id
-                        )
-                    ) {
-
-                        riconciliazione.link(
-                            "Check Riconciliazione",
-                            checkCorrente
-                        );
-                    }
+                if (riconciliazione) {
+                    riconciliazione.set("Importo", 0);
+                    if (!contieneConto(riconciliazione.field("Check Riconciliazione"), checkCorrente.id))
+                        riconciliazione.link("Check Riconciliazione", checkCorrente);
                 }
-
-
-                scriviEntrateVerificate(
-                    checkCorrente,
-                    true
-                );
-
-                checkCorrente.set(
-                    "Differenza da giustificare",
-                    0
-                );
-
-                checkCorrente.set(
-                    "Stato di Riconciliazione",
-                    "OK"
-                );
+                scriviEntrateVerificate(checkCorrente, true);
+                checkCorrente.set("Differenza da giustificare", 0);
+                checkCorrente.set("Stato di Riconciliazione", "OK");
             }
-
 
             // ================================================
             // 5K. COLLEGA MOVIMENTI AL CHECK CHIUSO
             // ================================================
-
-            if (
-                leggiEntrateVerificate(
-                    checkCorrente
-                ) &&
-                checkCorrente.field(
-                    "Stato di Riconciliazione"
-                ) == "OK"
-            ) {
-
-                collegaMovimentiIntervallo(
-                    checkPrecedente,
-                    checkCorrente,
-                    idConto
-                );
+            if (leggiEntrateVerificate(checkCorrente) &&
+                checkCorrente.field("Stato di Riconciliazione") == "OK") {
+                collegaMovimentiIntervallo(checkPrecedente, checkCorrente, idConto);
             }
         }
-
 
         // ====================================================
         // 6. SALDO PROGRESSIVO DEL CONTO
         // ====================================================
+        var saldoIniziale = Number(conto.field("Saldo Iniziale"));
+        var dataSaldoIniziale = conto.field("Data Saldo Iniziale");
+        var saldoContabileCorrenteConto = null;
 
-        var saldoIniziale =
-            Number(
-                conto.field(
-                    "Saldo Iniziale"
-                )
-            );
+        if (isFinite(saldoIniziale) && dataSaldoIniziale) {
+            var momentoSaldoIniziale = moment(dataSaldoIniziale);
+            var movimentiProgressivo = [];
+            for (var fp = 0; fp < tutteTransazioni.length; fp++) {
+                var movimentoFiltro = tutteTransazioni[fp];
+                if (!contieneConto(movimentoFiltro.field("Conto"), idConto)) continue;
+                var dataFiltro = movimentoFiltro.field("Data e Ora");
+                if (!dataFiltro) continue;
+                var momentoFiltro = moment(dataFiltro);
+                if (momentoFiltro.isBefore(momentoSaldoIniziale)) continue;
 
-        var dataSaldoIniziale =
-            conto.field(
-                "Data Saldo Iniziale"
-            );
-
-
-        var saldoContabileCorrenteConto =
-            null;
-
-
-        if (
-            isFinite(
-                saldoIniziale
-            ) &&
-            dataSaldoIniziale
-        ) {
-
-            var momentoSaldoIniziale =
-                moment(
-                    dataSaldoIniziale
-                );
-
-
-            var movimentiProgressivo =
-                [];
-
-
-            for (
-                var fp = 0;
-                fp < tutteTransazioni.length;
-                fp++
-            ) {
-
-                var movimentoFiltro =
-                    tutteTransazioni[fp];
-
-
-                if (
-                    !contieneConto(
-                        movimentoFiltro.field(
-                            "Conto"
-                        ),
-                        idConto
-                    )
-                ) {
-
-                    continue;
-                }
-
-
-                var dataFiltro =
-                    movimentoFiltro.field(
-                        "Data e Ora"
-                    );
-
-
-                if (!dataFiltro) {
-
-                    continue;
-                }
-
-
-                var momentoFiltro =
-                    moment(
-                        dataFiltro
-                    );
-
-
-                if (
-                    momentoFiltro.isBefore(
-                        momentoSaldoIniziale
-                    )
-                ) {
-
-                    continue;
-                }
-
-
-                var tipoFiltro =
-                    movimentoFiltro.field(
-                        "Tipo"
-                    );
-
-                var categoriaFiltro =
-                    movimentoFiltro.field(
-                        "Categoria"
-                    );
-
-
-                if (
-                    tipoFiltro ==
-                        "Bilancio" &&
-                    categoriaFiltro ==
-                        "Bilancio Iniziale"
-                ) {
-
-                    continue;
-                }
-
-
-                movimentiProgressivo.push(
-                    movimentoFiltro
-                );
+                // 0.8.8: anche Bilancio / Bilancio Iniziale legacy
+                // partecipa all'ordinamento. Non viene più filtrato.
+                movimentiProgressivo.push(movimentoFiltro);
             }
+            movimentiProgressivo.sort(ordinaMovimentiCronologicamente);
+            var saldoProgressivo = arrotonda2(saldoIniziale);
 
+            for (var p = 0; p < movimentiProgressivo.length; p++) {
+                var movimentoProgressivo = movimentiProgressivo[p];
+                var tipoProgressivo = movimentoProgressivo.field("Tipo");
+                var categoriaProgressivo = movimentoProgressivo.field("Categoria");
+                var importoProgressivo = Number(movimentoProgressivo.field("Importo"));
 
-            movimentiProgressivo.sort(
-                ordinaMovimentiCronologicamente
-            );
+                // 0.8.8: Il Bilancio Iniziale è neutro. Riceve il
+                // saldo corrente anche se il suo Importo non è numerico.
+                if (!isFinite(importoProgressivo) &&
+                    !(tipoProgressivo == "Bilancio" &&
+                      categoriaProgressivo == "Bilancio Iniziale")) continue;
 
-
-            var saldoProgressivo =
-                arrotonda2(
-                    saldoIniziale
-                );
-
-
-            for (
-                var p = 0;
-                p < movimentiProgressivo.length;
-                p++
-            ) {
-
-                var movimentoProgressivo =
-                    movimentiProgressivo[p];
-
-
-                var tipoProgressivo =
-                    movimentoProgressivo.field(
-                        "Tipo"
-                    );
-
-                var importoProgressivo =
-                    Number(
-                        movimentoProgressivo.field(
-                            "Importo"
-                        )
-                    );
-
-
-                if (
-                    !isFinite(
-                        importoProgressivo
-                    )
-                ) {
-
-                    continue;
-                }
-
-
-                if (
-                    tipoProgressivo ==
-                    "Entrata"
-                ) {
-
-                    saldoProgressivo +=
-                        importoProgressivo;
-
-                } else if (
-                    tipoProgressivo ==
-                    "Uscita"
-                ) {
-
-                    saldoProgressivo -=
-                        importoProgressivo;
-
+                if (tipoProgressivo == "Entrata") {
+                    saldoProgressivo += importoProgressivo;
+                } else if (tipoProgressivo == "Uscita") {
+                    saldoProgressivo -= importoProgressivo;
+                } else if (tipoProgressivo == "Bilancio" &&
+                           categoriaProgressivo == "Bilancio Iniziale") {
+                    // Movimento neutro: non sommare e non sottrarre.
+                    // Proseguire alla scrittura del saldo progressivo.
                 } else {
-
                     continue;
                 }
 
-
-                saldoProgressivo =
-                    arrotonda2(
-                        saldoProgressivo
-                    );
-
-
-                movimentoProgressivo.set(
-                    "Saldo Progressivo",
-                    saldoProgressivo
-                );
-
-
-                movimentoProgressivo.set(
-                    "Saldo Progressivo Visualizzato",
-                    formattaSaldoProgressivo(
-                        saldoProgressivo
-                    )
-                );
+                saldoProgressivo = arrotonda2(saldoProgressivo);
+                movimentoProgressivo.set("Saldo Progressivo", saldoProgressivo);
+                movimentoProgressivo.set("Saldo Progressivo Visualizzato",
+                    formattaSaldoProgressivo(saldoProgressivo));
             }
-
-
-            saldoContabileCorrenteConto =
-                arrotonda2(
-                    saldoProgressivo
-                );
+            saldoContabileCorrenteConto = arrotonda2(saldoProgressivo);
         }
-
 
         // ====================================================
         // 7. SALDO ATTUALE CENTRALIZZATO
         // ====================================================
-
-        var saldoCorrenteConto =
-            saldoContabileCorrenteConto;
-
-
-        if (
-            !isFinite(
-                saldoCorrenteConto
-            )
-        ) {
-
-            if (
-                checkContoOrdinati.length > 0
-            ) {
-
-                var ultimoCheckConto =
-                    checkContoOrdinati[
-                        checkContoOrdinati.length - 1
-                    ];
-
-
-                var saldoUltimoCheck =
-                    Number(
-                        ultimoCheckConto.field(
-                            "Disponibilità Netta"
-                        )
-                    );
-
-
-                var dataUltimoCheck =
-                    ultimoCheckConto.field(
-                        "Data e Ora"
-                    );
-
-
-                if (
-                    isFinite(
-                        saldoUltimoCheck
-                    ) &&
-                    dataUltimoCheck
-                ) {
-
-                    saldoCorrenteConto =
-                        arrotonda2(
-                            saldoUltimoCheck
-                        );
-
-
-                    var momentoUltimoCheckConto =
-                        moment(
-                            dataUltimoCheck
-                        );
-
-
-                    for (
-                        var sc = 0;
-                        sc < tutteTransazioni.length;
-                        sc++
-                    ) {
-
-                        var movimentoSuccessivo =
-                            tutteTransazioni[sc];
-
-
-                        if (
-                            !contieneConto(
-                                movimentoSuccessivo.field(
-                                    "Conto"
-                                ),
-                                idConto
-                            )
-                        ) {
-
-                            continue;
-                        }
-
-
-                        var dataSuccessiva =
-                            movimentoSuccessivo.field(
-                                "Data e Ora"
-                            );
-
-
-                        if (
-                            !dataSuccessiva ||
-                            !moment(
-                                dataSuccessiva
-                            ).isAfter(
-                                momentoUltimoCheckConto
-                            )
-                        ) {
-
-                            continue;
-                        }
-
-
-                        var tipoSuccessivo =
-                            movimentoSuccessivo.field(
-                                "Tipo"
-                            );
-
-
-                        var importoSuccessivo =
-                            Number(
-                                movimentoSuccessivo.field(
-                                    "Importo"
-                                )
-                            );
-
-
-                        if (
-                            !isFinite(
-                                importoSuccessivo
-                            )
-                        ) {
-
-                            continue;
-                        }
-
-
-                        if (
-                            tipoSuccessivo ==
-                            "Entrata"
-                        ) {
-
-                            saldoCorrenteConto +=
-                                importoSuccessivo;
-
-                        } else if (
-                            tipoSuccessivo ==
-                            "Uscita"
-                        ) {
-
-                            saldoCorrenteConto -=
-                                importoSuccessivo;
-                        }
-
-
-                        saldoCorrenteConto =
-                            arrotonda2(
-                                saldoCorrenteConto
-                            );
+        var saldoCorrenteConto = saldoContabileCorrenteConto;
+        if (!isFinite(saldoCorrenteConto)) {
+            if (checkContoOrdinati.length > 0) {
+                var ultimoCheckConto = checkContoOrdinati[checkContoOrdinati.length - 1];
+                var saldoUltimoCheck = Number(ultimoCheckConto.field("Disponibilità Netta"));
+                var dataUltimoCheck = ultimoCheckConto.field("Data e Ora");
+                if (isFinite(saldoUltimoCheck) && dataUltimoCheck) {
+                    saldoCorrenteConto = arrotonda2(saldoUltimoCheck);
+                    var momentoUltimoCheckConto = moment(dataUltimoCheck);
+                    for (var sc = 0; sc < tutteTransazioni.length; sc++) {
+                        var movimentoSuccessivo = tutteTransazioni[sc];
+                        if (!contieneConto(movimentoSuccessivo.field("Conto"), idConto)) continue;
+                        var dataSuccessiva = movimentoSuccessivo.field("Data e Ora");
+                        if (!dataSuccessiva ||
+                            !moment(dataSuccessiva).isAfter(momentoUltimoCheckConto)) continue;
+                        var tipoSuccessivo = movimentoSuccessivo.field("Tipo");
+                        var importoSuccessivo = Number(movimentoSuccessivo.field("Importo"));
+                        if (!isFinite(importoSuccessivo)) continue;
+                        if (tipoSuccessivo == "Entrata") saldoCorrenteConto += importoSuccessivo;
+                        else if (tipoSuccessivo == "Uscita") saldoCorrenteConto -= importoSuccessivo;
+                        saldoCorrenteConto = arrotonda2(saldoCorrenteConto);
                     }
                 }
             }
         }
-
-
-        if (
-            !isFinite(
-                saldoCorrenteConto
-            ) &&
-            isFinite(
-                saldoIniziale
-            )
-        ) {
-
-            saldoCorrenteConto =
-                arrotonda2(
-                    saldoIniziale
-                );
-        }
-
+        if (!isFinite(saldoCorrenteConto) && isFinite(saldoIniziale))
+            saldoCorrenteConto = arrotonda2(saldoIniziale);
 
         // ====================================================
         // 8. SCRITTURA SALDO ATTUALE
         // ====================================================
-
-        if (
-            isFinite(
-                saldoCorrenteConto
-            )
-        ) {
-
-            conto.set(
-                "Saldo Attuale",
-                saldoCorrenteConto
-            );
-        }
-
+        if (isFinite(saldoCorrenteConto))
+            conto.set("Saldo Attuale", saldoCorrenteConto);
 
         // ====================================================
         // 9. SALDO DISPONIBILE CENTRALIZZATO
         // ====================================================
-
-        var saldoDisponibileConto =
-            calcolaSaldoDisponibileConto(
-                conto,
-                saldoCorrenteConto
-            );
-
-
-        if (
-            saldoDisponibileConto !== null &&
-            isFinite(
-                saldoDisponibileConto
-            )
-        ) {
-
-            conto.set(
-                "Saldo Disponibile",
-                saldoDisponibileConto
-            );
-        }
+        var saldoDisponibileConto = calcolaSaldoDisponibileConto(conto, saldoCorrenteConto);
+        if (saldoDisponibileConto !== null && isFinite(saldoDisponibileConto))
+            conto.set("Saldo Disponibile", saldoDisponibileConto);
     }
-
 
     // ========================================================
     // 10. STATO CHECK PER DASHBOARD
     // ========================================================
+    var momentoUltimoCheckDashboard = null;
+    var statoCheckDashboard = "OK";
+    var prioritaStatoDashboard = 0;
+    var numeroContiAttivi = 0;
+    var numeroContiConCheck = 0;
+    var numeroContiConCheckConfermato = 0;
 
-    var momentoUltimoCheckDashboard =
-        null;
-
-    var statoCheckDashboard =
-        "OK";
-
-    var prioritaStatoDashboard =
-        0;
-
-    var numeroContiAttivi =
-        0;
-
-    var numeroContiConCheck =
-        0;
-
-    var numeroContiConCheckConfermato =
-        0;
-
-
-    function impostaStatoDashboard(
-        stato,
-        priorita
-    ) {
-
-        if (
-            priorita >
-            prioritaStatoDashboard
-        ) {
-
-            statoCheckDashboard =
-                stato;
-
-            prioritaStatoDashboard =
-                priorita;
+    function impostaStatoDashboard(stato, priorita) {
+        if (priorita > prioritaStatoDashboard) {
+            statoCheckDashboard = stato;
+            prioritaStatoDashboard = priorita;
         }
     }
 
-
-    for (
-        var dc = 0;
-        dc < tuttiConti.length;
-        dc++
-    ) {
-
-        var contoCheckDashboard =
-            tuttiConti[dc];
-
-
-        if (
-            !contoCheckDashboard.field(
-                "Attivo"
-            )
-        ) {
-
-            continue;
-        }
-
-
+    for (var dc = 0; dc < tuttiConti.length; dc++) {
+        var contoCheckDashboard = tuttiConti[dc];
+        if (!contoCheckDashboard.field("Attivo")) continue;
         numeroContiAttivi++;
+        var idContoDashboard = contoCheckDashboard.id;
 
-
-        var idContoDashboard =
-            contoCheckDashboard.id;
-
-
-        // ====================================================
         // 10A. CHECK DEL CONTO
-        // ====================================================
-
-        var checkDashboardConto =
-            [];
-
-
-        for (
-            var dck = 0;
-            dck < tuttiCheck.length;
-            dck++
-        ) {
-
-            if (
-                contieneConto(
-                    tuttiCheck[dck].field(
-                        "Conto"
-                    ),
-                    idContoDashboard
-                )
-            ) {
-
-                checkDashboardConto.push(
-                    tuttiCheck[dck]
-                );
-            }
+        var checkDashboardConto = [];
+        for (var dck = 0; dck < tuttiCheck.length; dck++) {
+            if (contieneConto(tuttiCheck[dck].field("Conto"), idContoDashboard))
+                checkDashboardConto.push(tuttiCheck[dck]);
         }
+        checkDashboardConto.sort(ordinaCronologicamente);
 
-
-        checkDashboardConto.sort(
-            ordinaCronologicamente
-        );
-
-
-        // ====================================================
         // 10B. NESSUN CHECK
-        // ====================================================
-
-        if (
-            checkDashboardConto.length == 0
-        ) {
-
-            impostaStatoDashboard(
-                "CHECK MANCANTE",
-                50
-            );
-
+        if (checkDashboardConto.length == 0) {
+            impostaStatoDashboard("CHECK MANCANTE", 50);
             continue;
         }
-
-
         numeroContiConCheck++;
 
-
-        // ====================================================
         // 10C. CHECK PIÙ RECENTE
-        // ====================================================
+        var ultimoCheckDashboardConto = checkDashboardConto[checkDashboardConto.length - 1];
+        var statoUltimoCheck = ultimoCheckDashboardConto.field("Stato di Riconciliazione");
+        var entrateVerificateUltimoCheck = leggiEntrateVerificate(ultimoCheckDashboardConto);
 
-        var ultimoCheckDashboardConto =
-            checkDashboardConto[
-                checkDashboardConto.length - 1
-            ];
-
-
-        var statoUltimoCheck =
-            ultimoCheckDashboardConto.field(
-                "Stato di Riconciliazione"
-            );
-
-
-        var entrateVerificateUltimoCheck =
-            leggiEntrateVerificate(
-                ultimoCheckDashboardConto
-            );
-
-
-        // ====================================================
         // 10D. ULTIMO CHECK CONFERMATO
-        // ====================================================
-
-        var ultimoCheckConfermatoConto =
-            null;
-
-
-        for (
-            var ucc =
-                checkDashboardConto.length - 1;
-            ucc >= 0;
-            ucc--
-        ) {
-
-            var candidatoCheck =
-                checkDashboardConto[ucc];
-
-
-            if (
-                leggiEntrateVerificate(
-                    candidatoCheck
-                ) &&
-                candidatoCheck.field(
-                    "Stato di Riconciliazione"
-                ) == "OK"
-            ) {
-
-                ultimoCheckConfermatoConto =
-                    candidatoCheck;
-
+        var ultimoCheckConfermatoConto = null;
+        for (var ucc = checkDashboardConto.length - 1; ucc >= 0; ucc--) {
+            var candidatoCheck = checkDashboardConto[ucc];
+            if (leggiEntrateVerificate(candidatoCheck) &&
+                candidatoCheck.field("Stato di Riconciliazione") == "OK") {
+                ultimoCheckConfermatoConto = candidatoCheck;
                 break;
             }
         }
 
-
-        // ====================================================
         // 10E. DATA CHECK CONFERMATO
-        // ====================================================
-
-        if (
-            ultimoCheckConfermatoConto
-        ) {
-
+        if (ultimoCheckConfermatoConto) {
             numeroContiConCheckConfermato++;
-
-
-            var dataUltimoCheckConfermato =
-                ultimoCheckConfermatoConto.field(
-                    "Data e Ora"
-                );
-
-
-            if (
-                dataUltimoCheckConfermato
-            ) {
-
-                var momentoCheckConfermato =
-                    moment(
-                        dataUltimoCheckConfermato
-                    );
-
-
-                if (
-                    !momentoUltimoCheckDashboard ||
-                    momentoCheckConfermato.isBefore(
-                        momentoUltimoCheckDashboard
-                    )
-                ) {
-
-                    momentoUltimoCheckDashboard =
-                        momentoCheckConfermato;
+            var dataUltimoCheckConfermato = ultimoCheckConfermatoConto.field("Data e Ora");
+            if (dataUltimoCheckConfermato) {
+                var momentoCheckConfermato = moment(dataUltimoCheckConfermato);
+                if (!momentoUltimoCheckDashboard ||
+                    momentoCheckConfermato.isBefore(momentoUltimoCheckDashboard)) {
+                    momentoUltimoCheckDashboard = momentoCheckConfermato;
                 }
             }
         }
 
-
-        // ====================================================
         // 10F. STATO DEL CHECK PIÙ RECENTE
-        // ====================================================
-
-        if (
-            statoUltimoCheck ==
-            "CHECK PRECEDENTE DA CHIUDERE"
-        ) {
-
-            impostaStatoDashboard(
-                "CHECK PRECEDENTE DA CHIUDERE",
-                40
-            );
-
-        } else if (
-            statoUltimoCheck ==
-            "ENTRATE DA REGISTRARE"
-        ) {
-
-            impostaStatoDashboard(
-                "ENTRATE DA REGISTRARE",
-                30
-            );
-
-        } else if (
-            statoUltimoCheck ==
-                "VERIFICA ENTRATE" ||
-            entrateVerificateUltimoCheck !==
-                true
-        ) {
-
-            impostaStatoDashboard(
-                "VERIFICA ENTRATE",
-                20
-            );
-
-        } else if (
-            statoUltimoCheck !=
-            "OK"
-        ) {
-
-            impostaStatoDashboard(
-                "ERRORE RICONCILIAZIONE",
-                35
-            );
+        if (statoUltimoCheck == "CHECK PRECEDENTE DA CHIUDERE") {
+            impostaStatoDashboard("CHECK PRECEDENTE DA CHIUDERE", 40);
+        } else if (statoUltimoCheck == "ENTRATE DA REGISTRARE") {
+            impostaStatoDashboard("ENTRATE DA REGISTRARE", 30);
+        } else if (statoUltimoCheck == "VERIFICA ENTRATE" ||
+                   entrateVerificateUltimoCheck !== true) {
+            impostaStatoDashboard("VERIFICA ENTRATE", 20);
+        } else if (statoUltimoCheck != "OK") {
+            impostaStatoDashboard("ERRORE RICONCILIAZIONE", 35);
         }
     }
 
-
-    // ========================================================
     // 10G. STATO GLOBALE
-    // ========================================================
-
-    if (
-        numeroContiAttivi == 0
-    ) {
-
-        statoCheckDashboard =
-            "NESSUN CONTO ATTIVO";
-
-        prioritaStatoDashboard =
-            60;
-
-    } else if (
-        numeroContiConCheck == 0
-    ) {
-
-        statoCheckDashboard =
-            "NESSUN CHECK";
-
-        prioritaStatoDashboard =
-            50;
+    if (numeroContiAttivi == 0) {
+        statoCheckDashboard = "NESSUN CONTO ATTIVO";
+        prioritaStatoDashboard = 60;
+    } else if (numeroContiConCheck == 0) {
+        statoCheckDashboard = "NESSUN CHECK";
+        prioritaStatoDashboard = 50;
     }
-
 
     // ========================================================
     // 11. DASHBOARD LEGACY
     // ========================================================
+    if (libreriaDashboard) {
+        var cardsDashboard = libreriaDashboard.entries();
+        var cardSaldoAttuale = null;
+        var cardSaldoDisponibile = null;
+        var cardSalvadanaio = null;
+        var cardAltreSpeseMese = null;
+        var cardSpeseFisseMese = null;
+        var cardEntrateUsciteMese = null;
 
-    if (
-        libreriaDashboard
-    ) {
-
-        var cardsDashboard =
-            libreriaDashboard.entries();
-
-
-        var cardSaldoAttuale =
-            null;
-
-        var cardSaldoDisponibile =
-            null;
-
-        var cardSalvadanaio =
-            null;
-
-        var cardAltreSpeseMese =
-            null;
-
-        var cardSpeseFisseMese =
-            null;
-
-        var cardEntrateUsciteMese =
-            null;
-
-
-        for (
-            var c = 0;
-            c < cardsDashboard.length;
-            c++
-        ) {
-
-            var card =
-                cardsDashboard[c];
-
-
-            var codiceKPI =
-                card.field(
-                    "Codice KPI"
-                );
-
-
-            if (
-                codiceKPI ==
-                "SALDO_ATTUALE"
-            ) {
-
-                cardSaldoAttuale =
-                    card;
-
-            } else if (
-                codiceKPI ==
-                "SALDO_DISPONIBILE"
-            ) {
-
-                cardSaldoDisponibile =
-                    card;
-
-            } else if (
-                codiceKPI ==
-                "SALVADANAIO"
-            ) {
-
-                cardSalvadanaio =
-                    card;
-
-            } else if (
-                codiceKPI ==
-                "ALTRE_SPESE_MESE"
-            ) {
-
-                cardAltreSpeseMese =
-                    card;
-
-            } else if (
-                codiceKPI ==
-                "SPESE_FISSE_MESE"
-            ) {
-
-                cardSpeseFisseMese =
-                    card;
-
-            } else if (
-                codiceKPI ==
-                "ENTRATE_USCITE_MESE"
-            ) {
-
-                cardEntrateUsciteMese =
-                    card;
-            }
+        for (var c = 0; c < cardsDashboard.length; c++) {
+            var card = cardsDashboard[c];
+            var codiceKPI = card.field("Codice KPI");
+            if (codiceKPI == "SALDO_ATTUALE") cardSaldoAttuale = card;
+            else if (codiceKPI == "SALDO_DISPONIBILE") cardSaldoDisponibile = card;
+            else if (codiceKPI == "SALVADANAIO") cardSalvadanaio = card;
+            else if (codiceKPI == "ALTRE_SPESE_MESE") cardAltreSpeseMese = card;
+            else if (codiceKPI == "SPESE_FISSE_MESE") cardSpeseFisseMese = card;
+            else if (codiceKPI == "ENTRATE_USCITE_MESE") cardEntrateUsciteMese = card;
         }
-
 
         // ====================================================
         // 11A. FORMATO
         // ====================================================
-
-        function formattaEuroDashboard(
-            valore
-        ) {
-
-            var numero =
-                Number(
-                    valore
-                );
-
-
-            if (
-                !isFinite(
-                    numero
-                )
-            ) {
-
-                return "";
-            }
-
-
-            var parti =
-                Math.abs(numero)
-                .toFixed(2)
-                .split(".");
-
-
-            var intero =
-                parti[0]
-                .replace(
-                    /\B(?=(\d{3})+(?!\d))/g,
-                    "."
-                );
-
-
-            var risultato =
-                intero +
-                "," +
-                parti[1] +
-                " €";
-
-
-            if (
-                numero < 0
-            ) {
-
-                risultato =
-                    "- " +
-                    risultato;
-            }
-
-
+        function formattaEuroDashboard(valore) {
+            var numero = Number(valore);
+            if (!isFinite(numero)) return "";
+            var parti = Math.abs(numero).toFixed(2).split(".");
+            var intero = parti[0].replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+            var risultato = intero + "," + parti[1] + " €";
+            if (numero < 0) risultato = "- " + risultato;
             return risultato;
         }
-
-
-        function formattaSaldoDashboard(
-            valore
-        ) {
-
-            return (
-                "\u26C3 " +
-                formattaEuroDashboard(
-                    valore
-                )
-            );
+        function formattaSaldoDashboard(valore) {
+            return "\u26C3 " + formattaEuroDashboard(valore);
         }
-
-
-        function nomeMeseDashboard(
-            numeroMese
-        ) {
-
-            var mesi = [
-                "GENNAIO",
-                "FEBBRAIO",
-                "MARZO",
-                "APRILE",
-                "MAGGIO",
-                "GIUGNO",
-                "LUGLIO",
-                "AGOSTO",
-                "SETTEMBRE",
-                "OTTOBRE",
-                "NOVEMBRE",
-                "DICEMBRE"
-            ];
-
-
-            return mesi[
-                numeroMese
-            ];
+        function nomeMeseDashboard(numeroMese) {
+            var mesi = ["GENNAIO", "FEBBRAIO", "MARZO", "APRILE", "MAGGIO", "GIUGNO",
+                        "LUGLIO", "AGOSTO", "SETTEMBRE", "OTTOBRE", "NOVEMBRE", "DICEMBRE"];
+            return mesi[numeroMese];
         }
-
-
-        function dataNelMeseDashboard(
-            data,
-            inizio,
-            fine
-        ) {
-
-            if (!data) {
-
-                return false;
-            }
-
-
-            var momento =
-                moment(
-                    data
-                );
-
-
-            return (
-                !momento.isBefore(
-                    inizio
-                ) &&
-                !momento.isAfter(
-                    fine
-                )
-            );
+        function dataNelMeseDashboard(data, inizio, fine) {
+            if (!data) return false;
+            var momento = moment(data);
+            return !momento.isBefore(inizio) && !momento.isAfter(fine);
         }
-
 
         // ====================================================
         // 11B. PERIODO
         // ====================================================
-
-        var momentoAdessoDashboard =
-            moment();
-
-
-        var inizioMese =
-            moment(
-                momentoAdessoDashboard
-            )
-            .startOf(
-                "month"
-            );
-
-
-        var fineMese =
-            moment(
-                momentoAdessoDashboard
-            )
-            .endOf(
-                "month"
-            );
-
-
-        var periodoDashboard =
-            nomeMeseDashboard(
-                momentoAdessoDashboard.month()
-            ) +
-            " " +
-            momentoAdessoDashboard.year();
-
+        var momentoAdessoDashboard = moment();
+        var inizioMese = moment(momentoAdessoDashboard).startOf("month");
+        var fineMese = moment(momentoAdessoDashboard).endOf("month");
+        var periodoDashboard = nomeMeseDashboard(momentoAdessoDashboard.month()) +
+                               " " + momentoAdessoDashboard.year();
 
         // ====================================================
         // 11C. TOTALI CENTRALIZZATI DAI CONTI
         // ====================================================
-
-        var saldoAttualeDashboard =
-            0;
-
-        var saldoDisponibileDashboard =
-            0;
-
-
-        for (
-            var cd = 0;
-            cd < tuttiConti.length;
-            cd++
-        ) {
-
-            var contoDashboard =
-                tuttiConti[cd];
-
-
-            if (
-                !contoDashboard.field(
-                    "Attivo"
-                )
-            ) {
-
-                continue;
-            }
-
-
-            var saldoConto =
-                Number(
-                    contoDashboard.field(
-                        "Saldo Attuale"
-                    )
-                );
-
-
-            if (
-                isFinite(
-                    saldoConto
-                )
-            ) {
-
-                saldoAttualeDashboard +=
-                    saldoConto;
-            }
-
-
-            var disponibileConto =
-                Number(
-                    contoDashboard.field(
-                        "Saldo Disponibile"
-                    )
-                );
-
-
-            if (
-                isFinite(
-                    disponibileConto
-                )
-            ) {
-
-                saldoDisponibileDashboard +=
-                    disponibileConto;
-            }
+        var saldoAttualeDashboard = 0;
+        var saldoDisponibileDashboard = 0;
+        for (var cd = 0; cd < tuttiConti.length; cd++) {
+            var contoDashboard = tuttiConti[cd];
+            if (!contoDashboard.field("Attivo")) continue;
+            var saldoConto = Number(contoDashboard.field("Saldo Attuale"));
+            if (isFinite(saldoConto)) saldoAttualeDashboard += saldoConto;
+            var disponibileConto = Number(contoDashboard.field("Saldo Disponibile"));
+            if (isFinite(disponibileConto)) saldoDisponibileDashboard += disponibileConto;
         }
-
-
-        saldoAttualeDashboard =
-            arrotonda2(
-                saldoAttualeDashboard
-            );
-
-
-        saldoDisponibileDashboard =
-            arrotonda2(
-                saldoDisponibileDashboard
-            );
-
+        saldoAttualeDashboard = arrotonda2(saldoAttualeDashboard);
+        saldoDisponibileDashboard = arrotonda2(saldoDisponibileDashboard);
 
         // ====================================================
         // 11D. SALDO ATTUALE
         // ====================================================
-
-        if (
-            cardSaldoAttuale
-        ) {
-
-            cardSaldoAttuale.set(
-                "Saldo Attuale",
-                saldoAttualeDashboard
-            );
-
-
-            cardSaldoAttuale.set(
-                "Valore Saldo",
-                formattaSaldoDashboard(
-                    saldoAttualeDashboard
-                )
-            );
-
-
-            cardSaldoAttuale.set(
-                "Valore Secondario",
-                ""
-            );
-
-
-            cardSaldoAttuale.set(
-                "Stato Tecnico Check",
-                statoCheckDashboard
-            );
-
-
-            if (
-                momentoUltimoCheckDashboard
-            ) {
-
-                cardSaldoAttuale.set(
-                    "Ultimo Check Saldo",
-                    momentoUltimoCheckDashboard
-                    .toDate()
-                    .getTime()
-                );
+        if (cardSaldoAttuale) {
+            cardSaldoAttuale.set("Saldo Attuale", saldoAttualeDashboard);
+            cardSaldoAttuale.set("Valore Saldo", formattaSaldoDashboard(saldoAttualeDashboard));
+            cardSaldoAttuale.set("Valore Secondario", "");
+            cardSaldoAttuale.set("Stato Tecnico Check", statoCheckDashboard);
+            if (momentoUltimoCheckDashboard) {
+                cardSaldoAttuale.set("Ultimo Check Saldo",
+                    momentoUltimoCheckDashboard.toDate().getTime());
             }
         }
-
 
         // ====================================================
         // 11E. SALDO DISPONIBILE
         // ====================================================
-
-        if (
-            cardSaldoDisponibile
-        ) {
-
-            cardSaldoDisponibile.set(
-                "Valore Saldo",
-                formattaSaldoDashboard(
-                    saldoDisponibileDashboard
-                )
-            );
-
-
-            cardSaldoDisponibile.set(
-                "Valore Secondario",
-                ""
-            );
+        if (cardSaldoDisponibile) {
+            cardSaldoDisponibile.set("Valore Saldo",
+                formattaSaldoDashboard(saldoDisponibileDashboard));
+            cardSaldoDisponibile.set("Valore Secondario", "");
         }
-
 
         // ====================================================
         // 11F. SPESE FISSE - REPORT MENSILE
         // ====================================================
-
-        var speseFissePrevisteMese =
-            0;
-
-
-        for (
-            var sf = 0;
-            sf < tutteSpeseFisse.length;
-            sf++
-        ) {
-
-            var spesaFissa =
-                tutteSpeseFisse[sf];
-
-
-            var importoMensile =
-                Number(
-                    spesaFissa.field(
-                        "Importo Mese [1]"
-                    )
-                );
-
-
-            if (
-                isFinite(
-                    importoMensile
-                )
-            ) {
-
-                speseFissePrevisteMese +=
-                    importoMensile;
-            }
+        var speseFissePrevisteMese = 0;
+        for (var sf = 0; sf < tutteSpeseFisse.length; sf++) {
+            var spesaFissa = tutteSpeseFisse[sf];
+            var importoMensile = Number(spesaFissa.field("Importo Mese [1]"));
+            if (isFinite(importoMensile)) speseFissePrevisteMese += importoMensile;
         }
-
-
-        speseFissePrevisteMese =
-            arrotonda2(
-                speseFissePrevisteMese
-            );
-
+        speseFissePrevisteMese = arrotonda2(speseFissePrevisteMese);
 
         // ====================================================
         // 11G. SALVADANAIO COMPLESSIVO
         // ====================================================
-
-        var totaleSalvadanaio =
-            0;
-
-
-        for (
-            var sv = 0;
-            sv < tuttiSalvadanai.length;
-            sv++
-        ) {
-
-            var salvadanaio =
-                tuttiSalvadanai[sv];
-
-
-            if (
-                !salvadanaio.field(
-                    "Attivo"
-                )
-            ) {
-
-                continue;
+        var totaleSalvadanaio = 0;
+        for (var sv = 0; sv < tuttiSalvadanai.length; sv++) {
+            var salvadanaio = tuttiSalvadanai[sv];
+            if (!salvadanaio.field("Attivo")) continue;
+            var valoreEffettivo = Number(salvadanaio.field("Importo Effettivo"));
+            if (!isFinite(valoreEffettivo)) {
+                var nominale = Number(salvadanaio.field("Importo Salvadanaio"));
+                var anticipato = Number(salvadanaio.field("Anticipato"));
+                if (!isFinite(nominale)) nominale = 0;
+                if (!isFinite(anticipato)) anticipato = 0;
+                valoreEffettivo = nominale - anticipato;
             }
-
-
-            var valoreEffettivo =
-                Number(
-                    salvadanaio.field(
-                        "Importo Effettivo"
-                    )
-                );
-
-
-            if (
-                !isFinite(
-                    valoreEffettivo
-                )
-            ) {
-
-                var nominale =
-                    Number(
-                        salvadanaio.field(
-                            "Importo Salvadanaio"
-                        )
-                    );
-
-                var anticipato =
-                    Number(
-                        salvadanaio.field(
-                            "Anticipato"
-                        )
-                    );
-
-
-                if (
-                    !isFinite(
-                        nominale
-                    )
-                ) {
-
-                    nominale = 0;
-                }
-
-
-                if (
-                    !isFinite(
-                        anticipato
-                    )
-                ) {
-
-                    anticipato = 0;
-                }
-
-
-                valoreEffettivo =
-                    nominale -
-                    anticipato;
-            }
-
-
-            if (
-                valoreEffettivo < 0
-            ) {
-
-                valoreEffettivo = 0;
-            }
-
-
-            totaleSalvadanaio +=
-                valoreEffettivo;
+            if (valoreEffettivo < 0) valoreEffettivo = 0;
+            totaleSalvadanaio += valoreEffettivo;
         }
-
-
-        totaleSalvadanaio =
-            arrotonda2(
-                totaleSalvadanaio
-            );
-
-
-        if (
-            cardSalvadanaio
-        ) {
-
-            cardSalvadanaio.set(
-                "Valore Saldo",
-                formattaSaldoDashboard(
-                    totaleSalvadanaio
-                )
-            );
-
-
-            cardSalvadanaio.set(
-                "Valore Secondario",
-                ""
-            );
+        totaleSalvadanaio = arrotonda2(totaleSalvadanaio);
+        if (cardSalvadanaio) {
+            cardSalvadanaio.set("Valore Saldo", formattaSaldoDashboard(totaleSalvadanaio));
+            cardSalvadanaio.set("Valore Secondario", "");
         }
-
 
         // ====================================================
         // 11H. TRANSAZIONI DEL MESE
         // ====================================================
-
-        var altreSpeseMese =
-            0;
-
-        var speseFisseMese =
-            0;
-
-        var entrateMese =
-            0;
-
-        var usciteMese =
-            0;
-
-
-        for (
-            var x = 0;
-            x < tutteTransazioni.length;
-            x++
-        ) {
-
-            var movimentoKPI =
-                tutteTransazioni[x];
-
-
-            var categoriaKPI =
-                movimentoKPI.field(
-                    "Categoria"
-                );
-
-
-            var tipoKPI =
-                movimentoKPI.field(
-                    "Tipo"
-                );
-
-
-            var dataKPI =
-                movimentoKPI.field(
-                    "Data e Ora"
-                );
-
-
-            var importoKPI =
-                Number(
-                    movimentoKPI.field(
-                        "Importo"
-                    )
-                );
-
-
-            if (
-                !dataKPI ||
-                !isFinite(
-                    importoKPI
-                )
-            ) {
-
-                continue;
-            }
-
-
-            var momentoKPI =
-                moment(
-                    dataKPI
-                );
-
-
-            if (
-                momentoKPI.isBefore(
-                    inizioMese
-                ) ||
-                momentoKPI.isAfter(
-                    fineMese
-                )
-            ) {
-
-                continue;
-            }
-
-
-            if (
-                tipoKPI ==
-                    "Bilancio" &&
-                categoriaKPI ==
-                    "Bilancio Iniziale"
-            ) {
-
-                continue;
-            }
-
-
-            if (
-                tipoKPI ==
-                "Entrata"
-            ) {
-
-                entrateMese +=
-                    importoKPI;
-
-            } else if (
-                tipoKPI ==
-                "Uscita"
-            ) {
-
-                usciteMese +=
-                    importoKPI;
-
-
-                if (
-                    categoriaKPI ==
-                    "Altre Spese"
-                ) {
-
-                    altreSpeseMese +=
-                        importoKPI;
-                }
-
-
-                if (
-                    categoriaKPI ==
-                    "Spesa Fissa"
-                ) {
-
-                    speseFisseMese +=
-                        importoKPI;
-                }
+        var altreSpeseMese = 0;
+        var speseFisseMese = 0;
+        var entrateMese = 0;
+        var usciteMese = 0;
+        for (var x = 0; x < tutteTransazioni.length; x++) {
+            var movimentoKPI = tutteTransazioni[x];
+            var categoriaKPI = movimentoKPI.field("Categoria");
+            var tipoKPI = movimentoKPI.field("Tipo");
+            var dataKPI = movimentoKPI.field("Data e Ora");
+            var importoKPI = Number(movimentoKPI.field("Importo"));
+            if (!dataKPI || !isFinite(importoKPI)) continue;
+            var momentoKPI = moment(dataKPI);
+            if (momentoKPI.isBefore(inizioMese) || momentoKPI.isAfter(fineMese)) continue;
+            if (tipoKPI == "Bilancio" && categoriaKPI == "Bilancio Iniziale") continue;
+            if (tipoKPI == "Entrata") {
+                entrateMese += importoKPI;
+            } else if (tipoKPI == "Uscita") {
+                usciteMese += importoKPI;
+                if (categoriaKPI == "Altre Spese") altreSpeseMese += importoKPI;
+                if (categoriaKPI == "Spesa Fissa") speseFisseMese += importoKPI;
             }
         }
-
-
-        altreSpeseMese =
-            arrotonda2(
-                altreSpeseMese
-            );
-
-        speseFisseMese =
-            arrotonda2(
-                speseFisseMese
-            );
-
-        entrateMese =
-            arrotonda2(
-                entrateMese
-            );
-
-        usciteMese =
-            arrotonda2(
-                usciteMese
-            );
-
+        altreSpeseMese = arrotonda2(altreSpeseMese);
+        speseFisseMese = arrotonda2(speseFisseMese);
+        entrateMese = arrotonda2(entrateMese);
+        usciteMese = arrotonda2(usciteMese);
 
         // ====================================================
         // 11I. ALTRE SPESE
         // ====================================================
-
-        if (
-            cardAltreSpeseMese
-        ) {
-
-            cardAltreSpeseMese.set(
-                "Altre Spese - Mese",
-                altreSpeseMese
-            );
-
-
-            cardAltreSpeseMese.set(
-                "Valore Uscita",
-                formattaEuroDashboard(
-                    altreSpeseMese
-                )
-            );
-
-
-            cardAltreSpeseMese.set(
-                "Periodo Dashboard",
-                periodoDashboard
-            );
+        if (cardAltreSpeseMese) {
+            cardAltreSpeseMese.set("Altre Spese - Mese", altreSpeseMese);
+            cardAltreSpeseMese.set("Valore Uscita", formattaEuroDashboard(altreSpeseMese));
+            cardAltreSpeseMese.set("Periodo Dashboard", periodoDashboard);
         }
-
 
         // ====================================================
         // 11J. SPESE FISSE
         // ====================================================
-
-        if (
-            cardSpeseFisseMese
-        ) {
-
-            cardSpeseFisseMese.set(
-                "Valore Uscita",
-                formattaEuroDashboard(
-                    speseFisseMese
-                )
-            );
-
-
-            cardSpeseFisseMese.set(
-                "Valore Secondario",
-                "/ " +
-                formattaEuroDashboard(
-                    speseFissePrevisteMese
-                )
-            );
-
-
-            cardSpeseFisseMese.set(
-                "Periodo Dashboard",
-                periodoDashboard
-            );
+        if (cardSpeseFisseMese) {
+            cardSpeseFisseMese.set("Valore Uscita", formattaEuroDashboard(speseFisseMese));
+            cardSpeseFisseMese.set("Valore Secondario", "/ " +
+                formattaEuroDashboard(speseFissePrevisteMese));
+            cardSpeseFisseMese.set("Periodo Dashboard", periodoDashboard);
         }
-
 
         // ====================================================
         // 11K. ENTRATE / USCITE
         // ====================================================
-
-        if (
-            cardEntrateUsciteMese
-        ) {
-
-            cardEntrateUsciteMese.set(
-                "Valore Entrata",
-                formattaEuroDashboard(
-                    entrateMese
-                )
-            );
-
-
-            cardEntrateUsciteMese.set(
-                "Separatore",
-                "/"
-            );
-
-
-            cardEntrateUsciteMese.set(
-                "Valore Uscita",
-                formattaEuroDashboard(
-                    usciteMese
-                )
-            );
-
-
-            cardEntrateUsciteMese.set(
-                "Periodo Dashboard",
-                periodoDashboard
-            );
-
-
-            cardEntrateUsciteMese.set(
-                "Valore Secondario",
-                ""
-            );
+        if (cardEntrateUsciteMese) {
+            cardEntrateUsciteMese.set("Valore Entrata", formattaEuroDashboard(entrateMese));
+            cardEntrateUsciteMese.set("Separatore", "/");
+            cardEntrateUsciteMese.set("Valore Uscita", formattaEuroDashboard(usciteMese));
+            cardEntrateUsciteMese.set("Periodo Dashboard", periodoDashboard);
+            cardEntrateUsciteMese.set("Valore Secondario", "");
         }
-
 
         // ====================================================
         // 11L. CONTROLLI DASHBOARD
         // ====================================================
-
-        if (
-            !cardSaldoAttuale
-        ) {
-
-            message(
-                "ATTENZIONE: card SALDO_ATTUALE non trovata."
-            );
-        }
-
-
-        if (
-            !cardSaldoDisponibile
-        ) {
-
-            message(
-                "ATTENZIONE: card SALDO_DISPONIBILE non trovata."
-            );
-        }
-
-
-        if (
-            !cardSalvadanaio
-        ) {
-
-            message(
-                "ATTENZIONE: card SALVADANAIO non trovata."
-            );
-        }
-
-
-        if (
-            !cardAltreSpeseMese
-        ) {
-
-            message(
-                "ATTENZIONE: card ALTRE_SPESE_MESE non trovata."
-            );
-        }
-
-
-        if (
-            !cardSpeseFisseMese
-        ) {
-
-            message(
-                "ATTENZIONE: card SPESE_FISSE_MESE non trovata."
-            );
-        }
-
-
-        if (
-            !cardEntrateUsciteMese
-        ) {
-
-            message(
-                "ATTENZIONE: card ENTRATE_USCITE_MESE non trovata."
-            );
-        }
+        if (!cardSaldoAttuale) message("ATTENZIONE: card SALDO_ATTUALE non trovata.");
+        if (!cardSaldoDisponibile) message("ATTENZIONE: card SALDO_DISPONIBILE non trovata.");
+        if (!cardSalvadanaio) message("ATTENZIONE: card SALVADANAIO non trovata.");
+        if (!cardAltreSpeseMese) message("ATTENZIONE: card ALTRE_SPESE_MESE non trovata.");
+        if (!cardSpeseFisseMese) message("ATTENZIONE: card SPESE_FISSE_MESE non trovata.");
+        if (!cardEntrateUsciteMese) message("ATTENZIONE: card ENTRATE_USCITE_MESE non trovata.");
     }
-
-
 } // fine ricalcolaFinanze()
-
 
 // ============================================================
 // FINANZE
 // MOTORE CENTRALE - SALVADANAI
-// VERSIONE MOTORE: 0.8.7 PRO
+// VERSIONE MOTORE: 0.8.8 PRO
 // ============================================================
 //
-// FUNZIONE PUBBLICA:
-//
-//      ricalcolaSalvadanai()
-//
-// FONTE UNICA DI VERITÀ:
-//
-// Importo Salvadanaio
-// = Importo Iniziale + Accantonamenti
-//
-// Anticipato
-// = Anticipi - Rimborsi
-//
-// Importo Effettivo
-// = Importo Salvadanaio - Anticipato
-//
-// SALDO PROGRESSIVO MOVIMENTI:
-//
-// Per ciascun singolo Salvadanaio:
-//
-//      Importo Iniziale
-//      + Accantonamenti
-//      - Anticipi
-//      + Rimborsi
-//
-// Ogni record di [■] Movimenti Salvadanaio riceve:
-//
-//      Saldo Progressivo
-//      Saldo Progressivo Visualizzato
-//
-// Formato:
-//
-//      [ ⛃ 1.234,56 € ]
-//
-// Al termine:
-//
-//      ricalcolaFinanze()
-//
+// FUNZIONE PUBBLICA: ricalcolaSalvadanai()
+// Importo Salvadanaio = Importo Iniziale + Accantonamenti
+// Anticipato = Anticipi - Rimborsi
+// Importo Effettivo = Importo Salvadanaio - Anticipato
+// Saldo progressivo movimenti = Importo Iniziale
+//     + Accantonamenti - Anticipi + Rimborsi
+// Al termine: ricalcolaFinanze()
 // ============================================================
-
 
 function ricalcolaSalvadanai() {
-
-
     // ========================================================
     // 1. FUNZIONI LOCALI
     // ========================================================
-
-    function arrotonda2Salvadanaio(
-        valore
-    ) {
-
-        return Math.round(
-            Number(valore) * 100
-        ) / 100;
+    function arrotonda2Salvadanaio(valore) {
+        return Math.round(Number(valore) * 100) / 100;
     }
 
-
-    function contieneRelazioneSalvadanaio(
-        relazione,
-        idCercato
-    ) {
-
-        if (
-            !relazione ||
-            !idCercato
-        ) {
-
-            return false;
+    function contieneRelazioneSalvadanaio(relazione, idCercato) {
+        if (!relazione || !idCercato) return false;
+        if (typeof relazione.length == "undefined") relazione = [relazione];
+        for (var i = 0; i < relazione.length; i++) {
+            if (relazione[i] && relazione[i].id == idCercato) return true;
         }
-
-
-        if (
-            typeof relazione.length ==
-            "undefined"
-        ) {
-
-            relazione =
-                [relazione];
-        }
-
-
-        for (
-            var i = 0;
-            i < relazione.length;
-            i++
-        ) {
-
-            if (
-                relazione[i] &&
-                relazione[i].id ==
-                idCercato
-            ) {
-
-                return true;
-            }
-        }
-
-
         return false;
     }
 
-
-    function tempoMovimentoSalvadanaio(
-        movimento
-    ) {
-
-        var data =
-            movimento.field(
-                "Data e Ora"
-            );
-
-
-        if (
-            !data
-        ) {
-
-            return 0;
-        }
-
-
-        var timestamp =
-            new Date(
-                data
-            )
-            .getTime();
-
-
-        if (
-            isNaN(
-                timestamp
-            )
-        ) {
-
-            return 0;
-        }
-
-
+    function tempoMovimentoSalvadanaio(movimento) {
+        var data = movimento.field("Data e Ora");
+        if (!data) return 0;
+        var timestamp = new Date(data).getTime();
+        if (isNaN(timestamp)) return 0;
         return timestamp;
     }
 
-
-    function ordinaMovimentiSalvadanaio(
-        a,
-        b
-    ) {
-
-        var tempoA =
-            tempoMovimentoSalvadanaio(
-                a
-            );
-
-
-        var tempoB =
-            tempoMovimentoSalvadanaio(
-                b
-            );
-
-
-        if (
-            tempoA < tempoB
-        ) {
-
-            return -1;
-        }
-
-
-        if (
-            tempoA > tempoB
-        ) {
-
-            return 1;
-        }
-
-
-        var idA =
-            String(
-                a.id || ""
-            );
-
-
-        var idB =
-            String(
-                b.id || ""
-            );
-
-
-        if (
-            idA < idB
-        ) {
-
-            return -1;
-        }
-
-
-        if (
-            idA > idB
-        ) {
-
-            return 1;
-        }
-
-
+    function ordinaMovimentiSalvadanaio(a, b) {
+        var tempoA = tempoMovimentoSalvadanaio(a);
+        var tempoB = tempoMovimentoSalvadanaio(b);
+        if (tempoA < tempoB) return -1;
+        if (tempoA > tempoB) return 1;
+        var idA = String(a.id || "");
+        var idB = String(b.id || "");
+        if (idA < idB) return -1;
+        if (idA > idB) return 1;
         return 0;
     }
 
-
-    function formattaSaldoProgressivoSalvadanaio(
-        valore
-    ) {
-
-        var numero =
-            Number(
-                valore
-            );
-
-
-        if (
-            !isFinite(
-                numero
-            )
-        ) {
-
-            return "";
-        }
-
-
-        var parti =
-            Math.abs(
-                numero
-            )
-            .toFixed(2)
-            .split(".");
-
-
-        var intero =
-            parti[0]
-            .replace(
-                /\B(?=(\d{3})+(?!\d))/g,
-                "."
-            );
-
-
-        var testo =
-            intero +
-            "," +
-            parti[1] +
-            " €";
-
-
-        if (
-            numero < 0
-        ) {
-
-            return (
-                "[ \u26C3 - " +
-                testo +
-                " ]"
-            );
-        }
-
-
-        return (
-            "[ \u26C3 " +
-            testo +
-            " ]"
-        );
+    function formattaSaldoProgressivoSalvadanaio(valore) {
+        var numero = Number(valore);
+        if (!isFinite(numero)) return "";
+        var parti = Math.abs(numero).toFixed(2).split(".");
+        var intero = parti[0].replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+        var testo = intero + "," + parti[1] + " €";
+        if (numero < 0) return "[ \u26C3 - " + testo + " ]";
+        return "[ \u26C3 " + testo + " ]";
     }
-
 
     // ========================================================
     // 2. LIBRERIE
     // ========================================================
-
-    var libreriaSalvadanaio =
-        libByName(
-            "[■] Salvadanaio"
-        );
-
-
-    var libreriaMovimentiSalvadanaio =
-        libByName(
-            "[■] Movimenti Salvadanaio"
-        );
-
-
-    var libreriaSaldo =
-        libByName(
-            "[■] Saldo"
-        );
-
-
-    var libreriaTransazioni =
-        libByName(
-            "[■] Transazioni"
-        );
-
-
-    var libreriaConti =
-        libByName(
-            "[■] Conti"
-        );
-
-
-    var libreriaDashboard =
-        libByName(
-            "[■] Dashboard Finanze"
-        );
-
-
-    var libreriaSpeseFisse =
-        libByName(
-            "[■] Spese Fisse"
-        );
-
+    var libreriaSalvadanaio = libByName("[■] Salvadanaio");
+    var libreriaMovimentiSalvadanaio = libByName("[■] Movimenti Salvadanaio");
+    var libreriaSaldo = libByName("[■] Saldo");
+    var libreriaTransazioni = libByName("[■] Transazioni");
+    var libreriaConti = libByName("[■] Conti");
+    var libreriaDashboard = libByName("[■] Dashboard Finanze");
+    var libreriaSpeseFisse = libByName("[■] Spese Fisse");
 
     // ========================================================
     // 3. CONTROLLO LIBRERIE
     // ========================================================
-
-    if (
-        !libreriaSalvadanaio ||
-        !libreriaMovimentiSalvadanaio ||
-        !libreriaSaldo ||
-        !libreriaTransazioni ||
-        !libreriaConti ||
-        !libreriaDashboard ||
-        !libreriaSpeseFisse
-    ) {
-
-        message(
-            "ERRORE v0.8.7: una o più librerie FINANZE non sono accessibili."
-        );
-
-
+    if (!libreriaSalvadanaio || !libreriaMovimentiSalvadanaio ||
+        !libreriaSaldo || !libreriaTransazioni || !libreriaConti ||
+        !libreriaDashboard || !libreriaSpeseFisse) {
+        message("ERRORE v0.8.8: una o più librerie FINANZE non sono accessibili.");
         return false;
     }
-
 
     // ========================================================
     // 4. DATI
     // ========================================================
-
-    var salvadanai =
-        libreriaSalvadanaio.entries();
-
-
-    var movimenti =
-        libreriaMovimentiSalvadanaio.entries();
-
+    var salvadanai = libreriaSalvadanaio.entries();
+    var movimenti = libreriaMovimentiSalvadanaio.entries();
 
     // ========================================================
     // 5. RICALCOLO DI OGNI SALVADANAIO
     // ========================================================
+    for (var s = 0; s < salvadanai.length; s++) {
+        var salvadanaio = salvadanai[s];
+        var base = Number(salvadanaio.field("Importo Iniziale"));
+        if (!isFinite(base)) base = 0;
+        base = arrotonda2Salvadanaio(base);
 
-    for (
-        var s = 0;
-        s < salvadanai.length;
-        s++
-    ) {
-
-        var salvadanaio =
-            salvadanai[s];
-
-
-        // ----------------------------------------------------
-        // 5A. IMPORTO INIZIALE
-        // ----------------------------------------------------
-
-        var base =
-            Number(
-                salvadanaio.field(
-                    "Importo Iniziale"
-                )
-            );
-
-
-        if (
-            !isFinite(
-                base
-            )
-        ) {
-
-            base = 0;
-        }
-
-
-        base =
-            arrotonda2Salvadanaio(
-                base
-            );
-
-
-        // ----------------------------------------------------
         // 5B. MOVIMENTI DEL SINGOLO SALVADANAIO
-        // ----------------------------------------------------
-
-        var movimentiSalvadanaio =
-            [];
-
-
-        for (
-            var ms = 0;
-            ms < movimenti.length;
-            ms++
-        ) {
-
-            var movimentoDaVerificare =
-                movimenti[ms];
-
-
-            if (
-                contieneRelazioneSalvadanaio(
-                    movimentoDaVerificare.field(
-                        "Salvadanaio"
-                    ),
-                    salvadanaio.id
-                )
-            ) {
-
-                movimentiSalvadanaio.push(
-                    movimentoDaVerificare
-                );
+        var movimentiSalvadanaio = [];
+        for (var ms = 0; ms < movimenti.length; ms++) {
+            var movimentoDaVerificare = movimenti[ms];
+            if (contieneRelazioneSalvadanaio(
+                movimentoDaVerificare.field("Salvadanaio"), salvadanaio.id)) {
+                movimentiSalvadanaio.push(movimentoDaVerificare);
             }
         }
+        movimentiSalvadanaio.sort(ordinaMovimentiSalvadanaio);
 
-
-        movimentiSalvadanaio.sort(
-            ordinaMovimentiSalvadanaio
-        );
-
-
-        // ----------------------------------------------------
         // 5C. TOTALI
-        // ----------------------------------------------------
-
-        var totaleAccantonamenti =
-            0;
-
-
-        var totaleAnticipi =
-            0;
-
-
-        var totaleRimborsi =
-            0;
-
-
-        var ultimoIncremento =
-            null;
-
-
-        // ----------------------------------------------------
-        // 5D. SALDO PROGRESSIVO
-        // ----------------------------------------------------
-
-        var saldoProgressivoSalvadanaio =
-            arrotonda2Salvadanaio(
-                base
-            );
-
+        var totaleAccantonamenti = 0;
+        var totaleAnticipi = 0;
+        var totaleRimborsi = 0;
+        var ultimoIncremento = null;
+        var saldoProgressivoSalvadanaio = arrotonda2Salvadanaio(base);
 
         // ====================================================
         // 6. MOVIMENTI IN ORDINE CRONOLOGICO
         // ====================================================
+        for (var m = 0; m < movimentiSalvadanaio.length; m++) {
+            var movimento = movimentiSalvadanaio[m];
+            var importo = Number(movimento.field("Importo"));
+            if (!isFinite(importo) || importo <= 0) continue;
+            importo = arrotonda2Salvadanaio(importo);
+            var tipo = String(movimento.field("Tipo di Movimento") || "");
 
-        for (
-            var m = 0;
-            m < movimentiSalvadanaio.length;
-            m++
-        ) {
-
-            var movimento =
-                movimentiSalvadanaio[m];
-
-
-            var importo =
-                Number(
-                    movimento.field(
-                        "Importo"
-                    )
-                );
-
-
-            if (
-                !isFinite(
-                    importo
-                ) ||
-                importo <= 0
-            ) {
-
-                continue;
-            }
-
-
-            importo =
-                arrotonda2Salvadanaio(
-                    importo
-                );
-
-
-            var tipo =
-                String(
-                    movimento.field(
-                        "Tipo di Movimento"
-                    ) || ""
-                );
-
-
-            // ------------------------------------------------
-            // ACCANTONAMENTO
-            // ------------------------------------------------
-
-            if (
-                tipo ==
-                "Accantonamento"
-            ) {
-
-                totaleAccantonamenti +=
-                    importo;
-
-
-                saldoProgressivoSalvadanaio +=
-                    importo;
-
-
-                var dataMovimento =
-                    movimento.field(
-                        "Data e Ora"
-                    );
-
-
-                if (
-                    dataMovimento
-                ) {
-
-                    var timestamp =
-                        new Date(
-                            dataMovimento
-                        )
-                        .getTime();
-
-
-                    if (
-                        !isNaN(
-                            timestamp
-                        ) &&
-                        (
-                            ultimoIncremento === null ||
-                            timestamp >
-                            ultimoIncremento
-                        )
-                    ) {
-
-                        ultimoIncremento =
-                            timestamp;
+            if (tipo == "Accantonamento") {
+                totaleAccantonamenti += importo;
+                saldoProgressivoSalvadanaio += importo;
+                var dataMovimento = movimento.field("Data e Ora");
+                if (dataMovimento) {
+                    var timestamp = new Date(dataMovimento).getTime();
+                    if (!isNaN(timestamp) &&
+                        (ultimoIncremento === null || timestamp > ultimoIncremento)) {
+                        ultimoIncremento = timestamp;
                     }
                 }
-            }
-
-
-            // ------------------------------------------------
-            // ANTICIPO
-            // ------------------------------------------------
-
-            else if (
-                tipo ==
-                "Anticipo"
-            ) {
-
-                totaleAnticipi +=
-                    importo;
-
-
-                saldoProgressivoSalvadanaio -=
-                    importo;
-            }
-
-
-            // ------------------------------------------------
-            // RIMBORSO
-            // ------------------------------------------------
-
-            else if (
-                tipo ==
-                "Rimborso"
-            ) {
-
-                totaleRimborsi +=
-                    importo;
-
-
-                saldoProgressivoSalvadanaio +=
-                    importo;
-            }
-
-
-            // ------------------------------------------------
-            // TIPO NON RICONOSCIUTO
-            // ------------------------------------------------
-
-            else {
-
+            } else if (tipo == "Anticipo") {
+                totaleAnticipi += importo;
+                saldoProgressivoSalvadanaio -= importo;
+            } else if (tipo == "Rimborso") {
+                totaleRimborsi += importo;
+                saldoProgressivoSalvadanaio += importo;
+            } else {
                 continue;
             }
 
-
-            saldoProgressivoSalvadanaio =
-                arrotonda2Salvadanaio(
-                    saldoProgressivoSalvadanaio
-                );
-
-
-            // =================================================
-            // 6A. SCRITTURA SALDO PROGRESSIVO MOVIMENTO
-            // =================================================
-
-            movimento.set(
-                "Saldo Progressivo",
-                saldoProgressivoSalvadanaio
-            );
-
-
-            movimento.set(
-                "Saldo Progressivo Visualizzato",
-                formattaSaldoProgressivoSalvadanaio(
-                    saldoProgressivoSalvadanaio
-                )
-            );
+            saldoProgressivoSalvadanaio = arrotonda2Salvadanaio(saldoProgressivoSalvadanaio);
+            movimento.set("Saldo Progressivo", saldoProgressivoSalvadanaio);
+            movimento.set("Saldo Progressivo Visualizzato",
+                formattaSaldoProgressivoSalvadanaio(saldoProgressivoSalvadanaio));
         }
-
 
         // ====================================================
         // 7. IMPORTO NOMINALE
         // ====================================================
-
-        var nominale =
-            arrotonda2Salvadanaio(
-                base +
-                totaleAccantonamenti
-            );
-
+        var nominale = arrotonda2Salvadanaio(base + totaleAccantonamenti);
 
         // ====================================================
         // 8. ANTICIPATO
         // ====================================================
-
-        var anticipato =
-            arrotonda2Salvadanaio(
-                totaleAnticipi -
-                totaleRimborsi
-            );
-
-
-        if (
-            anticipato < 0
-        ) {
-
-            anticipato = 0;
-        }
-
-
-        if (
-            anticipato >
-            nominale
-        ) {
-
-            anticipato =
-                nominale;
-        }
-
+        var anticipato = arrotonda2Salvadanaio(totaleAnticipi - totaleRimborsi);
+        if (anticipato < 0) anticipato = 0;
+        if (anticipato > nominale) anticipato = nominale;
 
         // ====================================================
         // 9. IMPORTO EFFETTIVO
         // ====================================================
-
-        var effettivo =
-            arrotonda2Salvadanaio(
-                nominale -
-                anticipato
-            );
-
-
-        if (
-            effettivo < 0
-        ) {
-
-            effettivo = 0;
-        }
-
+        var effettivo = arrotonda2Salvadanaio(nominale - anticipato);
+        if (effettivo < 0) effettivo = 0;
 
         // ====================================================
         // 10. SCRITTURA SALVADANAIO
         // ====================================================
-
-        salvadanaio.set(
-            "Importo Salvadanaio",
-            nominale
-        );
-
-
-        salvadanaio.set(
-            "Anticipato",
-            anticipato
-        );
-
-
-        salvadanaio.set(
-            "Importo Effettivo",
-            effettivo
-        );
-
-
-        if (
-            ultimoIncremento !== null
-        ) {
-
-            salvadanaio.set(
-                "Ultimo Incremento",
-                ultimoIncremento
-            );
-        }
+        salvadanaio.set("Importo Salvadanaio", nominale);
+        salvadanaio.set("Anticipato", anticipato);
+        salvadanaio.set("Importo Effettivo", effettivo);
+        if (ultimoIncremento !== null) salvadanaio.set("Ultimo Incremento", ultimoIncremento);
     }
-
 
     // ========================================================
     // 11. RICALCOLO FINANZE
     // ========================================================
-    //
-    // A questo punto sono aggiornati:
-    //
-    // - Salvadanaio
-    // - Movimenti Salvadanaio
-    // - Saldo Progressivo Movimenti
-    //
-    // Possiamo quindi aggiornare:
-    //
-    // - Saldo Attuale
-    // - Saldo Disponibile
-    // - Dashboard
-    //
-    // ========================================================
-
     ricalcolaFinanze(
         libreriaSaldo,
         libreriaTransazioni,
@@ -4437,8 +1088,5 @@ function ricalcolaSalvadanai() {
         libreriaSpeseFisse,
         libreriaSalvadanaio
     );
-
-
     return true;
-
 } // fine ricalcolaSalvadanai()
